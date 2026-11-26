@@ -1,9 +1,8 @@
-"""Unit tests for the ML modules: features, detector, pre-flight risk.
+"""Unit tests for the ML modules: features and detector (pre-flight risk is in test_risk.py).
 
 Verifies:
 - Feature extraction returns every per-channel feature without NaNs or Infs.
 - StegoDetector loads a trained artifact, rejects mismatched ones, and explains its score.
-- PreFlightRiskScorer correctly scores smooth vs textured images.
 """
 
 import time
@@ -20,12 +19,11 @@ from ml.features import (
     extract_features,
     extract_sample_pairs_features,
 )
-from ml.risk import PreFlightRiskScorer
 from ml.train_detector import save_artifact
 
 
 def create_smooth_image(width=128, height=128) -> Image.Image:
-    """Create a very smooth gradient image (should have low texture, high risk)."""
+    """A smooth RGB gradient (little texture)."""
     x = np.linspace(50, 150, width, dtype=np.uint8)
     y = np.linspace(50, 150, height, dtype=np.uint8)
     xx, yy = np.meshgrid(x, y)
@@ -34,7 +32,7 @@ def create_smooth_image(width=128, height=128) -> Image.Image:
 
 
 def create_textured_image(width=128, height=128) -> Image.Image:
-    """Create a noisy / high-texture image (should have high texture, lower risk)."""
+    """Uniform random RGB noise (maximum texture)."""
     rng = np.random.default_rng(42)
     arr = rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8)
     return Image.fromarray(arr)
@@ -94,24 +92,6 @@ def test_model_with_unknown_artifact_version_is_rejected(tiny_artifact, tmp_path
     save_artifact(tiny_artifact | {"format_version": 99}, path)
     with pytest.raises(ModelMismatchError):
         StegoDetector(path)
-
-
-def test_preflight_risk_scorer_differentiation():
-    """Verify that textured images receive lower detectability risk than smooth images."""
-    scorer = PreFlightRiskScorer()
-    smooth_img = create_smooth_image(128, 128)
-    textured_img = create_textured_image(128, 128)
-
-    smooth_result = scorer.evaluate(smooth_img, target_payload_bytes=100)
-    textured_result = scorer.evaluate(textured_img, target_payload_bytes=100)
-
-    assert 0.0 <= smooth_result["risk_score"] <= 1.0
-    assert 0.0 <= textured_result["risk_score"] <= 1.0
-    assert smooth_result["risk_level"] in ("Low", "Medium", "High")
-    assert textured_result["risk_level"] in ("Low", "Medium", "High")
-
-    # Smooth image must have higher detectability risk than a heavily textured image
-    assert smooth_result["risk_score"] > textured_result["risk_score"]
 
 
 def test_feature_names_are_per_channel():

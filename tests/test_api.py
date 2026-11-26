@@ -16,7 +16,6 @@ from api.config import Settings
 from api.main import create_app
 from api.middleware import RateLimitMiddleware
 from core.pipeline import max_message_bytes
-from ml.risk import PreFlightRiskScorer
 
 TEST_SETTINGS = Settings(static_dir=None, rate_limit_per_minute=0, max_concurrent_jobs=2, log_level="WARNING")
 SECRET_PASSWORD = "correct horse battery staple"
@@ -49,7 +48,7 @@ def client(analysis) -> Iterator[TestClient]:
 
 
 def make_client(analysis: AnalysisService | None = None, **overrides) -> TestClient:
-    service = analysis or AnalysisService(None, PreFlightRiskScorer(), "No trained detector.")
+    service = analysis or AnalysisService(None, "No trained detector.")
     return TestClient(create_app(replace(TEST_SETTINGS, **overrides), service))
 
 
@@ -320,6 +319,28 @@ def test_preflight_flags_message_that_does_not_fit(client):
     ).json()
 
     assert response["fits"] is False
+    assert response["risk"]["level"] in {"low", "medium", "high"}
+    assert "full-capacity" in response["risk"]["method"]
+
+
+def test_preflight_risk_comes_from_the_detector_simulation(client):
+    response = client.post(
+        "/api/preflight", files={"image": ("a.png", png_bytes(), "image/png")}, data={"message_bytes": "50"}
+    ).json()
+
+    assert response["risk"]["method"].startswith("Simulated: the trained detector")
+    assert response["texture"] in {"Highly textured", "Moderately textured", "Smooth"}
+    assert response["recommendation"]
+
+
+def test_preflight_without_trained_detector_returns_503():
+    with make_client() as client:
+        response = client.post(
+            "/api/preflight", files={"image": ("a.png", png_bytes(), "image/png")}, data={"message_bytes": "50"}
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "detector_unavailable"
 
 
 def test_detect_returns_probability_and_top_features(client):

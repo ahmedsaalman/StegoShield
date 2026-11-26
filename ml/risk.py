@@ -1,134 +1,187 @@
-"""Pre-flight cover image check (Module B): capacity and a texture-based risk estimate.
+"""Pre-flight check (Module B): exact capacity, detector-in-the-loop risk, safe payload size.
 
-Interim version. The risk score here is a hand-tuned texture/edge/entropy
-formula, labelled as such in its output. Phase 4 replaces it with the
-detector-in-the-loop check (embed a test payload, ask the trained detector).
-The separate risk regressor from the original proposal is out of scope and
-has been removed.
+The risk is not a formula. A copy of the cover gets seeded random bytes of the
+planned size, embedded the way the real pipeline embeds (pseudorandom slots,
+chosen algorithm), and the trained detector scores that copy. An encrypted
+message is indistinguishable from random bytes, so this is the score an analyst
+running the detector would see on the real stego image.
+
+There is no fallback: without a trained detector, loading fails with the
+detector's own error, so the UI can say why the check is unavailable.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import hashlib
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 from PIL import Image
 
-from core.capacity import calculate_image_capacity, compute_payload_ratio
-from ml.features import channel_means, extract_features
+from core.capacity import CapacityExceededError
+from core.crypto import MODE_ASYMMETRIC, MODE_PASSWORD, packet_overhead
+from core.embed import EmbeddingAlgorithm, embed_payload
+from ml.dataset import LENGTH_PREFIX_BYTES, PAYLOAD_RATIOS
+from ml.detector import DEFAULT_DETECTOR_PATH, StegoDetector
+from ml.features import extract_complexity_features
+
+RISK_LOW_BELOW = 0.35
+RISK_HIGH_ABOVE = 0.65
+DEFAULT_SIMULATION_SEED = 2026
+SLOTS_PER_PIXEL = 3  # R, G and B; alpha is never touched
+PACKET_MODES = {"password": MODE_PASSWORD, "asymmetric": MODE_ASYMMETRIC}
 
 
-class PreFlightRiskScorer:
-    """Evaluates cover image detectability risk before steganographic embedding."""
+class RiskLevel(StrEnum):
+    """How likely the detector is to flag the stego image."""
 
-    def _heuristic_risk(self, feat_dict: dict[str, float], payload_ratio: float) -> float:
-        """Multi-factor texture complexity & capacity model.
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
-        Natural images with high edge density and variance absorb LSB changes smoothly.
-        Smooth, flat images (e.g. clear sky, synthetic gradients) exhibit high detectability.
+
+class ProbabilityModel(Protocol):
+    """Anything that scores an image with P(stego); StegoDetector in production."""
+
+    def predict_probability(self, image: Image.Image) -> float: ...
+
+
+@dataclass(frozen=True)
+class RatioRisk:
+    """Simulated detection risk if the message filled one standard share of the cover."""
+
+    ratio: float
+    message_bytes: int
+    probability: float
+    level: RiskLevel
+
+
+@dataclass(frozen=True)
+class PreflightResult:
+    """Everything the sender needs to decide before hiding a message."""
+
+    capacity_bytes: int
+    planned_message_bytes: int
+    planned_ratio: float
+    risk_probability: float
+    risk_level: RiskLevel
+    recommended_max_bytes: int
+    ratio_risks: tuple[RatioRisk, ...]
+    texture_complexity: float
+
+    @property
+    def is_cover_recommended(self) -> bool:
+        """False when neither the planned size nor any standard payload share is Low risk."""
+        return self.recommended_max_bytes > 0
+
+
+def classify_risk(probability: float) -> RiskLevel:
+    """Low below 0.35, High above 0.65, Medium in between (both ends inclusive)."""
+    if probability < RISK_LOW_BELOW:
+        return RiskLevel.LOW
+    if probability > RISK_HIGH_ABOVE:
+        return RiskLevel.HIGH
+    return RiskLevel.MEDIUM
+
+
+class PreflightChecker:
+    """Detector-in-the-loop pre-flight check for a planned message."""
+
+    def __init__(self, detector: ProbabilityModel, seed: int = DEFAULT_SIMULATION_SEED) -> None:
+        self._detector = detector
+        self._seed = seed
+
+    @classmethod
+    def load(cls, model_path: Path = DEFAULT_DETECTOR_PATH, seed: int = DEFAULT_SIMULATION_SEED) -> PreflightChecker:
+        """Build a checker around the trained detector on disk.
+
+        Raises:
+            DetectorNotTrainedError: If no trained model exists.
+            ModelMismatchError: If the model doesn't match the current feature extractor.
         """
-        # 1. Texture penalty based on Laplacian variance (lower variance -> higher risk)
-        lap_var = feat_dict.get("img_laplacian_var", 100.0)
-        # Logarithmic normalization: lap_var < 50 is very smooth, > 1000 is heavily textured
-        lap_norm = np.clip(np.log10(max(1.0, lap_var)) / 3.5, 0.0, 1.0)
-        texture_risk = 1.0 - lap_norm
+        return cls(StegoDetector(model_path), seed=seed)
 
-        # 2. Edge energy penalty (lower edge energy -> higher risk)
-        edge_energy = feat_dict.get("img_sobel_edge_energy", 10.0)
-        edge_norm = np.clip(edge_energy / 40.0, 0.0, 1.0)
-        edge_risk = 1.0 - edge_norm
-
-        # 3. Histogram entropy penalty (lower entropy -> less information richness)
-        hist_ent = feat_dict.get("img_histogram_entropy", 6.0)
-        entropy_norm = np.clip(hist_ent / 8.0, 0.0, 1.0)
-        entropy_risk = 1.0 - entropy_norm
-
-        # Base carrier detectability vulnerability (independent of payload)
-        base_vulnerability = 0.45 * texture_risk + 0.35 * edge_risk + 0.20 * entropy_risk
-
-        # 4. Payload scaling: Higher payload ratios dramatically increase detectability
-        # If payload_ratio is zero (pre-embedding audit), default to typical 10% payload assumption
-        effective_ratio = payload_ratio if payload_ratio > 0 else 0.10
-        ratio_multiplier = np.clip(effective_ratio / 0.25, 0.1, 2.0)
-
-        raw_score = base_vulnerability * (0.6 + 0.6 * ratio_multiplier)
-        return float(np.clip(raw_score, 0.05, 0.95))
-
-    def evaluate(
+    def check(
         self,
-        image: Image.Image,
-        target_payload_bytes: int = 0,
-    ) -> dict[str, Any]:
-        """Perform comprehensive pre-flight cover image risk audit.
+        cover: Image.Image,
+        planned_message_bytes: int,
+        key_mode: str = "password",
+        algorithm: EmbeddingAlgorithm = "replacement",
+    ) -> PreflightResult:
+        """Capacity, simulated risk for the planned size, and the largest Low-risk size.
 
-        Args:
-            image: Candidate carrier PIL image.
-            target_payload_bytes: Planned payload size in bytes (0 for general audit).
-
-        Returns:
-            dict: Risk metrics, Low/Medium/High classification, gauge color, and recommendations.
+        Raises:
+            ValueError: If the planned size is negative or the key mode is unknown.
+            CapacityExceededError: If the planned message doesn't fit in the cover.
         """
-        capacity = calculate_image_capacity(image)
-        total_slots = capacity["total_carrier_bits"]
-        payload_ratio = compute_payload_ratio(target_payload_bytes, total_slots) if target_payload_bytes > 0 else 0.0
-
-        _, channel_feats = extract_features(image)
-        feat_dict = channel_means(channel_feats)  # heuristics read channel-averaged values
-
-        risk_score = self._heuristic_risk(feat_dict, payload_ratio)
-
-        # Categorize into Low / Medium / High
-        if risk_score < 0.35:
-            risk_level = "Low"
-            risk_color = "#28a745"  # Green
-            risk_badge = "🟢 Low Detectability Risk"
-            recommendation = (
-                "Excellent carrier image! The high texture and edge density provide "
-                "superior steganographic masking against AI detectors."
-            )
-        elif risk_score <= 0.65:
-            risk_level = "Medium"
-            risk_color = "#fd7e14"  # Orange
-            risk_badge = "🟠 Moderate Detectability Risk"
-            recommendation = (
-                "Acceptable carrier image. Keep your payload under the recommended "
-                f"safe limit ({capacity['safe_payload_bytes']:,} bytes) to maintain stealth."
-            )
-        else:
-            risk_level = "High"
-            risk_color = "#dc3545"  # Red
-            risk_badge = "🔴 High Detectability Risk"
-            recommendation = (
-                "Carrier image is smooth, low-variance, or flat (e.g. plain sky/gradient). "
-                "Micro-pixel modifications will be statistically prominent. "
-                "Recommend choosing an image with richer texture, foliage, or complex edges."
+        overhead = _packet_overhead(key_mode)
+        if planned_message_bytes < 0:
+            raise ValueError("Planned message size can't be negative.")
+        rgb = cover.convert("RGB")
+        total_slots = rgb.width * rgb.height * SLOTS_PER_PIXEL
+        capacity = max(0, total_slots // 8 - overhead)
+        if planned_message_bytes > capacity:
+            raise CapacityExceededError(
+                f"A {planned_message_bytes}-byte message doesn't fit: this cover holds at most "
+                f"{capacity} bytes in {key_mode} mode ({rgb.width}x{rgb.height} image)."
             )
 
-        # Texture classification
-        lap_var = feat_dict.get("img_laplacian_var", 0.0)
-        if lap_var > 300:
-            texture_desc = "Highly Textured (Dense detail)"
-        elif lap_var > 80:
-            texture_desc = "Moderately Textured (Standard photos)"
-        else:
-            texture_desc = "Smooth / Low Variance (High risk)"
+        planned_packet_bytes = planned_message_bytes + overhead
+        probability = self._simulated_probability(rgb, planned_packet_bytes, algorithm)
+        planned_risk = RatioRisk(
+            ratio=planned_packet_bytes * 8 / total_slots,
+            message_bytes=planned_message_bytes,
+            probability=probability,
+            level=classify_risk(probability),
+        )
+        ratio_risks = tuple(self._ratio_risk(rgb, ratio, overhead, capacity, algorithm) for ratio in PAYLOAD_RATIOS)
+        return PreflightResult(
+            capacity_bytes=capacity,
+            planned_message_bytes=planned_message_bytes,
+            planned_ratio=planned_risk.ratio,
+            risk_probability=probability,
+            risk_level=planned_risk.level,
+            # The planned size counts too: a Low-risk plan is a safe size even if 5 % is not.
+            recommended_max_bytes=_largest_low_risk_bytes((*ratio_risks, planned_risk)),
+            ratio_risks=ratio_risks,
+            texture_complexity=texture_complexity(rgb),
+        )
 
-        return {
-            "risk_score": risk_score,
-            "risk_score_percent": f"{risk_score * 100:.1f}%",
-            "risk_level": risk_level,
-            "risk_color": risk_color,
-            "risk_badge": risk_badge,
-            "texture_description": texture_desc,
-            "recommendation": recommendation,
-            "capacity": capacity,
-            "target_payload_bytes": target_payload_bytes,
-            "payload_ratio_percent": f"{payload_ratio * 100:.2f}%" if target_payload_bytes > 0 else "N/A",
-            "model_type": "Texture heuristic (interim, replaced by detector-in-the-loop in Phase 4)",
-            "features": {
-                "laplacian_variance": f"{feat_dict.get('img_laplacian_var', 0):.1f}",
-                "edge_energy": f"{feat_dict.get('img_sobel_edge_energy', 0):.2f}",
-                "histogram_entropy": f"{feat_dict.get('img_histogram_entropy', 0):.2f}",
-                "lsb_mean": f"{feat_dict.get('lsb_mean', 0):.3f}",
-            },
-        }
+    def _ratio_risk(
+        self, rgb: Image.Image, ratio: float, overhead: int, capacity: int, algorithm: EmbeddingAlgorithm
+    ) -> RatioRisk:
+        packet_bytes = int(rgb.width * rgb.height * SLOTS_PER_PIXEL * ratio) // 8
+        probability = self._simulated_probability(rgb, packet_bytes, algorithm)
+        return RatioRisk(
+            ratio=ratio,
+            message_bytes=min(capacity, max(0, packet_bytes - overhead)),
+            probability=probability,
+            level=classify_risk(probability),
+        )
+
+    def _simulated_probability(self, rgb: Image.Image, packet_bytes: int, algorithm: EmbeddingAlgorithm) -> float:
+        # Seeded per (seed, size, algorithm) so the same cover always gets the same answer.
+        key = hashlib.sha256(f"{self._seed}|{packet_bytes}|{algorithm}".encode()).digest()
+        # embed_payload adds its own 4-byte length prefix, so the total matches the packet size.
+        payload = np.random.default_rng(int.from_bytes(key, "big")).bytes(max(1, packet_bytes - LENGTH_PREFIX_BYTES))
+        stego = embed_payload(rgb, payload, perm_key=key, mode="pseudorandom", algorithm=algorithm)
+        return self._detector.predict_probability(stego)
+
+
+def texture_complexity(cover: Image.Image) -> float:
+    """Laplacian variance of the greyscale cover: higher means more texture to hide changes in."""
+    gray = np.asarray(cover.convert("L"))
+    return extract_complexity_features(gray)["img_laplacian_var"]
+
+
+def _packet_overhead(key_mode: str) -> int:
+    if key_mode not in PACKET_MODES:
+        raise ValueError(f"Unknown key mode {key_mode!r}; expected one of {sorted(PACKET_MODES)}.")
+    return packet_overhead(PACKET_MODES[key_mode])
+
+
+def _largest_low_risk_bytes(ratio_risks: tuple[RatioRisk, ...]) -> int:
+    return max((risk.message_bytes for risk in ratio_risks if risk.level is RiskLevel.LOW), default=0)

@@ -12,8 +12,9 @@ StegoShield combines authenticated cryptography (**AES-256-GCM**, **PBKDF2**, an
    - Symmetric password mode (PBKDF2-HMAC-SHA256 + AES-256-GCM).
    - Asymmetric mode (X25519 ECDH + HKDF key exchange + AES-256-GCM).
 2. **Module B (Pre-Flight Cover Image Checker & Risk Scoring):**
-   - Exact carrier payload capacity calculation.
-   - Machine learning risk score predicting detectability before embedding.
+   - Exact message capacity, including the format v2 overhead for the chosen key mode.
+   - Detector-in-the-loop risk: random bytes of the planned size are hidden in a copy of the cover and the trained detector scores it (Low < 35% ≤ Medium ≤ 65% < High).
+   - Recommended safe size: the largest of {5, 10, 25, 50 %} of the cover (or the planned size) that scores Low.
 3. **Module C (Steganographic Embedding & Extraction):**
    - Cryptographically keyed pseudorandom LSB scattering across color channels.
    - Safe extraction failure and AES-GCM authentication verification against tampering.
@@ -37,7 +38,7 @@ StegoShield/
 │   ├── features.py        # LSB statistics, chi-square, spatial co-occurrence
 │   ├── dataset.py         # Stego-cover dataset generation
 │   ├── detector.py        # Steganalysis detector inference
-│   └── risk.py            # Pre-flight cover image risk scoring
+│   └── risk.py            # Pre-flight check: capacity + detector-in-the-loop risk
 ├── api/                   # FastAPI back end (stateless REST API over core/ and ml/)
 │   ├── main.py            # App factory, middleware stack, serves the built front end
 │   ├── routes/            # /api/keys, /api/hide, /api/reveal, /api/capacity, /api/preflight, /api/detect

@@ -1,7 +1,7 @@
-"""Adapter from the ml/ detector and pre-flight scorer to API schemas.
+"""Adapter from the ml/ detector and pre-flight check to API schemas.
 
 This is the only API module that knows the shape of ml/ results, so changes in ml/
-(e.g. the Phase 4 detector-in-the-loop pre-flight check) only need mirroring here.
+only need mirroring here.
 """
 
 from __future__ import annotations
@@ -28,9 +28,11 @@ from api.schemas import (
 )
 from core.capacity import calculate_image_capacity
 from core.crypto import MODE_ASYMMETRIC, MODE_PASSWORD, packet_overhead
+from core.embed import EmbeddingAlgorithm
 from core.pipeline import max_message_bytes
 from ml.detector import DEFAULT_DETECTOR_PATH, DetectionResult, DetectorError, StegoDetector
-from ml.risk import PreFlightRiskScorer
+from ml.risk import PreflightChecker, PreflightResult
+from ml.risk import RiskLevel as SimulatedRiskLevel
 
 logger = logging.getLogger("stegoshield.api")
 
@@ -39,10 +41,19 @@ DETECTOR_UNAVAILABLE_MODEL_TYPE = "Not installed"
 # Verdict bands around the detector's own decision threshold; display wording only.
 CLEAN_BELOW_PROBABILITY = 0.25
 STEGO_FROM_PROBABILITY = 0.85
+# The Hide endpoint embeds with LSB matching by default, so the pre-flight simulates that.
+SIMULATED_ALGORITHM: EmbeddingAlgorithm = "matching"
+# Laplacian-variance bands for the texture label; display wording only, not part of the risk.
+HIGH_TEXTURE_FROM = 300.0
+MODERATE_TEXTURE_FROM = 80.0
+DETECTOR_UNAVAILABLE_MESSAGE = "The detector isn't installed on this server yet, so images can't be scanned."
+PREFLIGHT_UNAVAILABLE_MESSAGE = (
+    "The detector isn't installed on this server yet, so detection risk can't be estimated. "
+    "Capacity is still shown when you choose an image."
+)
 
 _PIPELINE_MODE_NAMES = {KeyMethod.PASSWORD: "password", KeyMethod.PUBLIC_KEY: "asymmetric"}
 _PACKET_MODES = {KeyMethod.PASSWORD: MODE_PASSWORD, KeyMethod.PUBLIC_KEY: MODE_ASYMMETRIC}
-_RISK_LEVELS = {"Low": RiskLevel.LOW, "Medium": RiskLevel.MEDIUM, "High": RiskLevel.HIGH}
 
 
 def describe_capacity(image: Image.Image, is_lossy_source: bool) -> CapacityResponse:
@@ -60,16 +71,11 @@ def describe_capacity(image: Image.Image, is_lossy_source: bool) -> CapacityResp
 
 
 class AnalysisService:
-    """Detection and pre-flight risk, backed by whatever ml/ currently provides."""
+    """Detection and detector-in-the-loop pre-flight risk; both need the trained detector."""
 
-    def __init__(
-        self,
-        detector: StegoDetector | None,
-        risk_scorer: PreFlightRiskScorer,
-        detector_unavailable_reason: str | None = None,
-    ) -> None:
+    def __init__(self, detector: StegoDetector | None, detector_unavailable_reason: str | None = None) -> None:
         self._detector = detector
-        self._risk_scorer = risk_scorer
+        self._preflight = PreflightChecker(detector) if detector is not None else None
         self._detector_unavailable_reason = detector_unavailable_reason
 
     @classmethod
@@ -79,8 +85,8 @@ class AnalysisService:
             detector = StegoDetector(detector_path or DEFAULT_DETECTOR_PATH)
         except DetectorError as exc:
             logger.warning("Detector unavailable: %s", exc)
-            return cls(None, PreFlightRiskScorer(), detector_unavailable_reason=str(exc))
-        return cls(detector, PreFlightRiskScorer())
+            return cls(None, detector_unavailable_reason=str(exc))
+        return cls(detector)
 
     @property
     def detector_status(self) -> DetectorStatus:
@@ -99,11 +105,7 @@ class AnalysisService:
             ApiError: No trained detector is installed (503).
         """
         if self._detector is None:
-            raise ApiError(
-                503,
-                "detector_unavailable",
-                "The detector isn't installed on this server yet, so images can't be scanned.",
-            )
+            raise ApiError(503, "detector_unavailable", DETECTOR_UNAVAILABLE_MESSAGE)
         result = self._detector.predict(image.convert("RGB"))
         return DetectionResponse(
             probability=_clamp_probability(result.probability),
@@ -117,27 +119,39 @@ class AnalysisService:
     def preflight(
         self, image: Image.Image, message_bytes: int, method: KeyMethod, is_lossy_source: bool
     ) -> PreflightResponse:
-        """Capacity, detectability risk and a suggested size limit for a planned message."""
+        """Capacity, simulated detection risk and the largest low-risk size for a planned message.
+
+        A message that doesn't fit is reported with fits=False and the risk of filling the image.
+
+        Raises:
+            ApiError: No trained detector is installed (503).
+            CapacityExceededError: The image can't hold even an empty message.
+        """
+        if self._preflight is None:
+            raise ApiError(503, "detector_unavailable", PREFLIGHT_UNAVAILABLE_MESSAGE)
         capacity = describe_capacity(image, is_lossy_source)
-        overhead = packet_overhead(_PACKET_MODES[method])
-        packet_bytes = message_bytes + overhead
-        total_slots = calculate_image_capacity(image)["total_carrier_bits"]
-        result = self._risk_scorer.evaluate(image.convert("RGB"), target_payload_bytes=packet_bytes)
         method_capacity: int = getattr(capacity.max_message_bytes, method.value)
+        fits = message_bytes <= method_capacity
+        simulated_bytes = message_bytes if fits else method_capacity
+        result = self._preflight.check(
+            image, simulated_bytes, key_mode=_PIPELINE_MODE_NAMES[method], algorithm=SIMULATED_ALGORITHM
+        )
+        packet_bits = (message_bytes + packet_overhead(_PACKET_MODES[method])) * 8
+        total_slots = calculate_image_capacity(image)["total_carrier_bits"]
         return PreflightResponse(
             capacity=capacity,
             message_bytes=message_bytes,
             method=method,
-            fits=message_bytes <= method_capacity,
-            payload_percent=round(100 * packet_bytes * 8 / total_slots, 3) if total_slots else 100.0,
-            recommended_max_message_bytes=_recommended_bytes(result, overhead, method_capacity),
+            fits=fits,
+            payload_percent=round(100 * packet_bits / total_slots, 3) if total_slots else 100.0,
+            recommended_max_message_bytes=min(result.recommended_max_bytes, method_capacity),
             risk=RiskAssessment(
-                probability=_clamp_probability(result["risk_score"]),
-                level=_RISK_LEVELS[result["risk_level"]],
-                method=result["model_type"],
+                probability=_clamp_probability(result.risk_probability),
+                level=RiskLevel(result.risk_level.value),
+                method=_risk_method(simulated_bytes, fits),
             ),
-            recommendation=result["recommendation"],
-            texture=result["texture_description"],
+            recommendation=_recommendation(result),
+            texture=_texture_label(result.texture_complexity),
         )
 
 
@@ -151,9 +165,31 @@ def _verdict_for(result: DetectionResult) -> Verdict:
     return Verdict.CLEAN
 
 
-def _recommended_bytes(risk_result: dict[str, Any], overhead: int, method_capacity: int) -> int:
-    safe_packet_bytes = int(risk_result["capacity"]["safe_payload_bytes"])
-    return max(0, min(method_capacity, safe_packet_bytes - overhead))
+def _risk_method(simulated_bytes: int, fits: bool) -> str:
+    size = f"{simulated_bytes:,}-byte" if fits else "full-capacity"
+    return (
+        f"Simulated: the trained detector scored a copy of this image with a {size} test message hidden by LSB matching"
+    )
+
+
+def _recommendation(result: PreflightResult) -> str:
+    if not result.is_cover_recommended:
+        return (
+            "Even small messages in this image are likely to be noticed. "
+            "Choose a different image; larger photos with natural detail work best."
+        )
+    limit = f"{result.recommended_max_bytes:,} bytes"
+    if result.risk_level is SimulatedRiskLevel.LOW:
+        return f"A message this size is unlikely to be noticed. Stay at or under {limit} to keep the risk low."
+    return f"Shorten the message to {limit} or less to bring the risk down to low, or choose a larger image."
+
+
+def _texture_label(laplacian_variance: float) -> str:
+    if laplacian_variance >= HIGH_TEXTURE_FROM:
+        return "Highly textured"
+    if laplacian_variance >= MODERATE_TEXTURE_FROM:
+        return "Moderately textured"
+    return "Smooth"
 
 
 def _to_contribution(item: Any) -> FeatureContribution:

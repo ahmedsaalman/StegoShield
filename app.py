@@ -25,13 +25,14 @@ from core.keys import (
     import_public_key_auto,
 )
 from core.pipeline import (
+    max_message_bytes,
     stego_decode_asymmetric,
     stego_decode_password,
     stego_encode_asymmetric,
     stego_encode_password,
 )
 from ml.detector import DetectorError, StegoDetector
-from ml.risk import PreFlightRiskScorer
+from ml.risk import PreflightChecker
 
 # Page Configuration
 st.set_page_config(
@@ -116,13 +117,7 @@ def get_detector() -> StegoDetector | DetectorError:
         return error
 
 
-@st.cache_resource
-def get_risk_scorer() -> PreFlightRiskScorer:
-    return PreFlightRiskScorer()
-
-
 detector = get_detector()
-risk_scorer = get_risk_scorer()
 
 
 # Header
@@ -285,27 +280,18 @@ with tab_audit:
                 step=10,
             )
 
-            # Evaluate Risk
-            audit_result = risk_scorer.evaluate(cover_img, target_payload_bytes=sim_bytes)
-
             st.subheader("Detectability Risk Assessment")
-            r_col1, r_col2 = st.columns([1, 2])
-            with r_col1:
-                st.markdown(f"### {audit_result['risk_badge']}")
-                st.markdown(f"**Score:** `{audit_result['risk_score_percent']}`")
-                st.progress(audit_result["risk_score"])
-            with r_col2:
-                st.info(f"**Recommendation:** {audit_result['recommendation']}")
-
-            st.write(f"**Texture Profile:** {audit_result['texture_description']}")
-
-            # Detailed Feature Table
-            with st.expander("🔬 View Image Statistical Features"):
-                f_cols = st.columns(4)
-                f_cols[0].metric("Laplacian Variance", audit_result["features"]["laplacian_variance"])
-                f_cols[1].metric("Sobel Edge Energy", audit_result["features"]["edge_energy"])
-                f_cols[2].metric("Histogram Entropy", audit_result["features"]["histogram_entropy"])
-                f_cols[3].metric("LSB Mean", audit_result["features"]["lsb_mean"])
+            if isinstance(detector, DetectorError):
+                st.warning(f"Risk estimate unavailable: {detector}")
+            else:
+                planned = min(sim_bytes, max_message_bytes(cover_img, "password"))
+                audit = PreflightChecker(detector).check(cover_img, planned, algorithm="matching")
+                st.markdown(f"### {audit.risk_level.value.title()} risk · {audit.risk_probability:.0%}")
+                st.progress(audit.risk_probability)
+                st.info(f"**Largest low-risk message:** {audit.recommended_max_bytes:,} bytes")
+                st.caption(
+                    "Simulated: the trained detector scored a copy of this image with a test message hidden by LSB matching."
+                )
 
 
 # ==============================================================================
