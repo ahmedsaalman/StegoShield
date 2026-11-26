@@ -1,81 +1,53 @@
-"""Tests for the Hugging Face Space deploy script (deploy/hf_space.py); nothing is uploaded."""
+"""Static checks on the Oracle Cloud deployment files (deploy/oracle/); nothing is deployed."""
+
+import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
+import yaml
 
-from deploy.hf_space import (
-    PublishPermissionError,
-    check_token_can_publish,
-    main,
-    space_app_url,
-    stage_committed_files,
-)
+ORACLE_DIR = Path(__file__).resolve().parent.parent / "deploy" / "oracle"
 
 
 @pytest.fixture(scope="module")
-def staged(tmp_path_factory):
-    return stage_committed_files(tmp_path_factory.mktemp("space"))
+def compose():
+    return yaml.safe_load((ORACLE_DIR / "compose.yaml").read_text(encoding="utf-8"))
 
 
-def test_stage_contains_everything_the_dockerfile_copies(staged):
-    for path in (
-        "Dockerfile",
-        "requirements.txt",
-        "api/main.py",
-        "core/crypto.py",
-        "ml/features.py",
-        "models/detector.joblib",
-        "experiments/results/split.csv",
-        "frontend/package-lock.json",
-    ):
-        assert (staged / path).is_file(), path
+def test_app_builds_the_project_dockerfile(compose):
+    assert (ORACLE_DIR / compose["services"]["app"]["build"]["context"] / "Dockerfile").is_file()
 
 
-def test_stage_leaves_out_tests_docs_and_data(staged):
-    for path in ("tests", "docs", "data", "notebooks", ".claude", "frontend/node_modules"):
-        assert not (staged / path).exists(), path
+def test_only_caddy_is_reachable_from_outside(compose):
+    """The app trusts X-Forwarded-For, which is only safe while Caddy is its sole client."""
+    assert "ports" not in compose["services"]["app"]
+    assert compose["services"]["app"]["environment"]["FORWARDED_ALLOW_IPS"] == "*"
+    assert compose["services"]["caddy"]["ports"] == ["80:80", "443:443", "443:443/udp"]
 
 
-def test_space_card_replaces_readme_and_points_hf_at_the_app_port(staged):
-    card = (staged / "README.md").read_text(encoding="utf-8")
+def test_app_runs_with_hsts_and_a_cpu_job_cap(compose):
+    environment = compose["services"]["app"]["environment"]
 
-    assert card.startswith("---\n")
-    assert "sdk: docker" in card
-    assert "app_port: 8000" in card
-    assert "EXPOSE 8000" in (staged / "Dockerfile").read_text(encoding="utf-8")
+    assert environment["STEGOSHIELD_ENABLE_HSTS"] == "1"
+    assert int(environment["STEGOSHIELD_MAX_CONCURRENT_JOBS"]) >= 1
 
 
-@pytest.mark.parametrize(
-    ("space_id", "url"),
-    [
-        ("Owner/StegoShield", "https://owner-stegoshield.hf.space"),
-        ("my_org/stego.demo", "https://my-org-stego-demo.hf.space"),
-    ],
-)
-def test_app_url_follows_the_hf_space_subdomain_rule(space_id, url):
-    assert space_app_url(space_id) == url
+def test_caddy_proxies_to_the_app_port():
+    assert "reverse_proxy app:8000" in (ORACLE_DIR / "Caddyfile").read_text(encoding="utf-8")
 
 
-def test_malformed_space_id_is_rejected_before_anything_runs(capsys):
-    with pytest.raises(SystemExit):
-        main(["--space", "no-slash", "--dry-run"])
+def test_deploy_key_is_restricted_to_the_update_script():
+    setup = (ORACLE_DIR / "setup.sh").read_text(encoding="utf-8")
 
-    assert "expected OWNER/NAME" in capsys.readouterr().err
-
-
-def identity(role="write", orgs=()):
-    return {"name": "alice", "orgs": [{"name": org} for org in orgs], "auth": {"accessToken": {"role": role}}}
+    assert 'command=\\"bash $APP_DIR/deploy/oracle/update.sh\\"' in setup
+    assert "no-port-forwarding" in setup and "no-pty" in setup
 
 
-@pytest.mark.parametrize("space_id", ["alice/stegoshield", "Alice/stegoshield", "uni-lab/stegoshield"])
-def test_token_may_publish_to_its_own_account_or_its_orgs(space_id):
-    check_token_can_publish(identity(orgs=["uni-lab"]), space_id)
+@pytest.mark.parametrize("script", ["setup.sh", "update.sh"])
+def test_shell_scripts_parse(script):
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash not available")
 
-
-def test_token_from_another_account_is_named_in_the_error():
-    with pytest.raises(PublishPermissionError, match=r"belongs to .*'alice'.*cannot publish under 'bob'"):
-        check_token_can_publish(identity(), "bob/stegoshield")
-
-
-def test_read_only_token_is_rejected_before_uploading():
-    with pytest.raises(PublishPermissionError, match="read-only"):
-        check_token_can_publish(identity(role="read"), "alice/stegoshield")
+    subprocess.run([bash, "-n", str(ORACLE_DIR / script)], check=True)

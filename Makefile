@@ -2,7 +2,7 @@
 PYTHON := .venv/bin/python
 NPM := npm --prefix frontend
 
-.PHONY: install dev-api dev-web test lint build serve check deploy-hf
+.PHONY: install dev-api dev-web test lint build serve check
 
 install:  ## Install Python and front-end dependencies
 	$(PYTHON) -m pip install -r requirements-dev.txt
@@ -29,6 +29,3 @@ serve: build  ## Production-style server: API + built front end on http://127.0.
 	$(PYTHON) -m uvicorn api.main:app --port 8000 --workers 2 --no-access-log
 
 check: lint test  ## Everything CI should run
-
-deploy-hf:  ## Publish HEAD to a Hugging Face Space: make deploy-hf SPACE=owner/name (run `.venv/bin/hf auth login` first)
-	$(PYTHON) -m deploy.hf_space --space $(SPACE)

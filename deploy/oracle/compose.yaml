@@ -1,0 +1,38 @@
+# Production stack on the Oracle Cloud VM: the app image plus Caddy for HTTPS.
+# Run from this folder: docker compose up -d --build  (SITE_ADDRESS comes from ./.env, written by setup.sh)
+name: stegoshield
+
+services:
+  app:
+    build:
+      context: ../..
+    restart: unless-stopped
+    environment:
+      STEGOSHIELD_ENABLE_HSTS: "1"
+      STEGOSHIELD_MAX_CONCURRENT_JOBS: "2"
+      # Port 8000 is not published, so only Caddy can reach the app. Caddy overwrites any X-Forwarded-For
+      # a client sends, so trusting it gives correct per-visitor rate limits.
+      FORWARDED_ALLOW_IPS: "*"
+    expose:
+      - "8000"
+    mem_limit: 4g
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in deploy/oracle/.env (setup.sh writes it)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # HTTPS certificates; keep across restarts to stay inside Let's Encrypt rate limits
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

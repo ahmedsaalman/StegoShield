@@ -120,19 +120,25 @@ docker run -p 8000:8000 stegoshield
 ```
 If `models/detector.joblib` is missing or was trained on a different feature set, the app still runs; `/api/meta` reports why and the Detect page explains that scanning is unavailable.
 
-**Hosted demo (Hugging Face Spaces):** the examiners' link. A Docker Space builds the same `Dockerfile` on Hugging Face's free CPU tier (2 vCPU, 16 GB).
+**Hosted demo (Oracle Cloud Always Free):** the examiners' link. A small ARM VM runs the same image behind [Caddy](https://caddyserver.com), which fetches and renews a Let's Encrypt certificate. The free `<ip-with-dashes>.sslip.io` hostname means no domain is needed. Files: `deploy/oracle/` (`compose.yaml`, `Caddyfile`, `setup.sh`, `update.sh`).
 
-*Automatic (recommended):* `.github/workflows/deploy-hf.yml` runs the tests on every push to `main` that touches the app, then publishes it from GitHub's servers. One-time setup is in GitHub → Settings → Secrets and variables → Actions: a secret `HF_TOKEN` (a Hugging Face token with write access) and a variable `HF_SPACE` (`<owner>/stegoshield`). Until `HF_SPACE` is set, the deploy step is skipped. To deploy without a push, use Actions → *Deploy to Hugging Face Space* → *Run workflow*.
+One-time setup:
+1. **Oracle console:** create an instance: *Ubuntu 24.04*, shape *VM.Standard.A1.Flex* (1 OCPU / 6 GB is plenty), a public IPv4 address, and your SSH public key. In the instance's subnet → *Security List*, add ingress rules for TCP 80 and TCP 443 from `0.0.0.0/0`.
+2. **Deploy key, on your machine:** `ssh-keygen -t ed25519 -N "" -C stegoshield-deploy -f ~/.ssh/stegoshield_deploy`
+3. **On the VM** (`ssh ubuntu@<ip>`):
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/ahmedsaalman/StegoShield/main/deploy/oracle/setup.sh -o setup.sh
+   DEPLOY_PUBLIC_KEY="<contents of ~/.ssh/stegoshield_deploy.pub>" bash setup.sh   # ~10 min: Docker, firewall, first build
+   ```
+   It prints the live URL. The VM's own iptables rules are opened too: Oracle's Ubuntu images block everything except SSH.
+4. **GitHub** → Settings → Secrets and variables → Actions:
+   - variable `ORACLE_HOST` = the VM's IP;
+   - secret `ORACLE_SSH_KEY` = contents of `~/.ssh/stegoshield_deploy`;
+   - secret `ORACLE_KNOWN_HOSTS` = output of `ssh-keyscan -t ed25519 <ip>`.
 
-*Manual* (needs your network to reach huggingface.co):
-```bash
-.venv/bin/hf auth login                     # once: an access token with write permission
-make deploy-hf SPACE=<owner>/stegoshield    # or add --dry-run via: .venv/bin/python -m deploy.hf_space --space ... --dry-run
-```
-`deploy/hf_space.py` publishes only what is **committed at HEAD** and only the paths the Dockerfile copies. It uses `deploy/space_README.md` as the Space card (Docker SDK, `app_port: 8000`). It also sets the Space variables `STEGOSHIELD_ENABLE_HSTS=1`, `STEGOSHIELD_MAX_CONCURRENT_JOBS=2` and `FORWARDED_ALLOW_IPS=*`, so the rate limit applies per visitor behind the Spaces proxy. Re-run it after each commit you want live.
-- Share the **direct app URL** it prints (`https://<owner>-stegoshield.hf.space`), not the `huggingface.co/spaces/...` page. The app forbids framing (`frame-ancestors 'none'`), so the Space page's embedded view stays blank.
-- A free Space sleeps after 48 hours without visitors and needs about a minute to wake. Open the link shortly before the examiner does.
-- Visitors' passwords and private keys reach the server. It stores nothing, but the Space card tells visitors to use only test secrets.
+From then on, `.github/workflows/deploy.yml` runs the Python and front-end tests on every push to `main` that touches the app. If they pass, it SSHes in, and `update.sh` resets the VM to `origin/main`, rebuilds, and waits for the container's health check. The deploy key can only run `update.sh`, because it carries a forced command in `authorized_keys`. Until `ORACLE_HOST` is set, the deploy job is skipped. To redeploy without a push, use Actions → *Deploy to Oracle Cloud* → *Run workflow*.
+- The app port (8000) is never published; only Caddy reaches it. That's why `FORWARDED_ALLOW_IPS=*` is safe there: Caddy overwrites any `X-Forwarded-For` a client sends, so rate limits apply per visitor. HSTS is on, and heavy jobs are capped at 2.
+- Visitors' passwords and private keys reach the server. It stores nothing, but treat the demo as a demo: use test secrets.
 
 ### 6. Build the Detector Dataset
 ```bash
