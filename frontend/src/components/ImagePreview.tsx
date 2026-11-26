@@ -16,7 +16,7 @@ interface ImagePreviewProps {
 export function ImagePreview({ file, alt, details, onRemove, removeLabel = "Choose another image" }: ImagePreviewProps) {
   return (
     <div className="image-preview">
-      <div className="image-preview__frame">
+      <div className="image-frame">
         <BlobImage blob={file} alt={alt} />
       </div>
       <div className="image-preview__meta">

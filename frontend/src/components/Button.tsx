@@ -3,9 +3,11 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  size?: ButtonSize;
   icon?: IconName;
   isLoading?: boolean;
   loadingLabel?: string;
@@ -15,6 +17,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({
   variant = "secondary",
+  size = "md",
   icon,
   isLoading = false,
   loadingLabel,
@@ -25,10 +28,10 @@ export function Button({
   children,
   ...rest
 }: ButtonProps) {
-  const classes = ["btn", `btn--${variant}`, fullWidth && "btn--full", className].filter(Boolean).join(" ");
+  const classes = ["btn", `btn--${variant}`, size !== "md" && `btn--${size}`, fullWidth && "btn--full", className].filter(Boolean).join(" ");
   return (
     <button {...rest} type={type} className={classes} disabled={disabled || isLoading} aria-busy={isLoading}>
-      {isLoading ? <span className="spinner" aria-hidden="true" /> : icon && <Icon name={icon} size={18} />}
+      {isLoading ? <span className="spinner" aria-hidden="true" /> : icon && <Icon name={icon} />}
       <span>{isLoading && loadingLabel ? loadingLabel : children}</span>
     </button>
   );

@@ -59,7 +59,9 @@ export function FileDrop({ label, hint, accept, icon = "upload", onFile, error }
           }}
         />
         <label htmlFor={inputId} className="file-drop__label">
-          <Icon name={icon} size={28} className="file-drop__icon" />
+          <span className="file-drop__icon" aria-hidden="true">
+            <Icon name={icon} size={18} />
+          </span>
           <span className="file-drop__title">{label}</span>
           <span className="file-drop__hint" id={hintId}>
             {hint}

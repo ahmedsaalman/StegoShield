@@ -1,15 +1,15 @@
 import { type FormEvent, useState } from "react";
 
-import { Alert } from "../components/Alert";
 import { Button } from "../components/Button";
+import { Card } from "../components/Card";
 import { ChoiceGroup } from "../components/ChoiceGroup";
 import { CopyButton } from "../components/CopyButton";
 import { Disclosure } from "../components/Disclosure";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
-import { FileDrop, describeFile } from "../components/FileDrop";
+import { FileDrop } from "../components/FileDrop";
 import { ImagePreview } from "../components/ImagePreview";
-import { PageHeader } from "../components/PageHeader";
+import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
 import { api, type EmbeddingLayout, type KeyMethod, type RevealResult, type UnlockSecret } from "../lib/api";
 import { saveFile } from "../lib/download";
@@ -64,9 +64,7 @@ export function RevealPage() {
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0 || !image) return;
     const unlock: UnlockSecret =
-      method === "password"
-        ? { method, password }
-        : { method, privateKey: privateKey?.pem ?? "", passphrase };
+      method === "password" ? { method, password } : { method, privateKey: privateKey?.pem ?? "", passphrase };
     const stegoImage = image;
     void reveal.run((signal) => api.reveal({ image: stegoImage, unlock, layout }, signal));
   }
@@ -82,117 +80,148 @@ export function RevealPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Receive"
         title="Reveal a message"
         description="Open an image you received and recover the hidden message with the password or your private key."
       />
-      <form className="stack-lg form" onSubmit={handleSubmit} noValidate>
-        <section className="card stack" aria-labelledby="reveal-image-heading">
-          <h2 id="reveal-image-heading" className="section__title">
-            Image you received
-          </h2>
-          {image ? (
-            <ImagePreview file={image} alt="The file you received" onRemove={() => setImage(null)} />
-          ) : (
-            <FileDrop
-              label="Choose the image or drag it here"
-              hint="Use the original PNG file. Screenshots and photos re-sent through chat apps no longer contain the message."
-              accept="image/png,image/bmp"
-              icon="image"
-              onFile={chooseImage}
-              error={imageError ?? fieldErrors.image ?? null}
-            />
-          )}
-        </section>
-
-        <section className="card stack" aria-labelledby="reveal-key-heading">
-          <h2 id="reveal-key-heading" className="section__title">
-            Unlock it
-          </h2>
-          <ChoiceGroup name="reveal-method" legend="How was it protected?" choices={UNLOCK_CHOICES} value={method} onChange={setMethod} />
-          {method === "password" ? (
-            <Field id="reveal-password" label="Password" error={fieldErrors.password ?? null}>
-              {(describedBy) => (
-                <PasswordInput
-                  id="reveal-password"
-                  value={password}
-                  onChange={setPassword}
-                  describedBy={describedBy}
-                  isInvalid={Boolean(fieldErrors.password)}
-                  autoComplete="off"
-                />
-              )}
-            </Field>
-          ) : (
-            <div className="stack">
-              {privateKey ? (
-                <div className="file-chip">
-                  <span>
-                    Private key: <strong>{privateKey.name}</strong>
-                  </span>
-                  <Button variant="ghost" icon="close" onClick={() => setPrivateKey(null)}>
-                    Remove
-                  </Button>
-                </div>
+      <PageBody isNarrow>
+        <div className="stack-lg">
+          <form className="stack-lg" onSubmit={handleSubmit} noValidate>
+            <Card
+              step="Step 01"
+              title="Image you received"
+              footer={<span>Use the original PNG. Screenshots and re-sent photos no longer carry the message.</span>}
+            >
+              {image ? (
+                <ImagePreview file={image} alt="The file you received" onRemove={() => setImage(null)} />
               ) : (
                 <FileDrop
-                  label="Choose your private key (.pem)"
-                  hint="The file is read in your browser and sent only with this request; it is never stored."
-                  accept=".pem,.key,.txt,application/x-pem-file"
-                  icon="key"
-                  onFile={(file) => void choosePrivateKey(file)}
-                  error={privateKeyError ?? fieldErrors.privateKey ?? null}
+                  label="Drop the image here or click to browse"
+                  hint="PNG or BMP"
+                  accept="image/png,image/bmp"
+                  icon="upload"
+                  onFile={chooseImage}
+                  error={imageError ?? fieldErrors.image ?? null}
                 />
               )}
-              <Field
-                id="reveal-passphrase"
-                label="Key passphrase"
-                optional
-                hint="Only if you set a passphrase when you created the key."
+            </Card>
+
+            <Card step="Step 02" title="Unlock" description="Use the same method the sender chose.">
+              <ChoiceGroup
+                name="reveal-method"
+                legend="How was it protected?"
+                choices={UNLOCK_CHOICES}
+                value={method}
+                onChange={setMethod}
+                isLegendVisible={false}
+              />
+              {method === "password" ? (
+                <Field id="reveal-password" label="Password" error={fieldErrors.password ?? null}>
+                  {(describedBy) => (
+                    <PasswordInput
+                      id="reveal-password"
+                      value={password}
+                      onChange={setPassword}
+                      describedBy={describedBy}
+                      isInvalid={Boolean(fieldErrors.password)}
+                      autoComplete="off"
+                    />
+                  )}
+                </Field>
+              ) : (
+                <PrivateKeyFields
+                  privateKey={privateKey}
+                  onChoose={(file) => void choosePrivateKey(file)}
+                  onRemove={() => setPrivateKey(null)}
+                  error={privateKeyError ?? fieldErrors.privateKey ?? null}
+                  passphrase={passphrase}
+                  onPassphraseChange={setPassphrase}
+                />
+              )}
+            </Card>
+
+            <Disclosure summary="Advanced options">
+              <ChoiceGroup
+                name="reveal-layout"
+                legend="Where the sender placed the bits"
+                choices={LAYOUT_CHOICES}
+                value={layout}
+                onChange={setLayout}
+                layout="stack"
+              />
+            </Disclosure>
+
+            {reveal.state.status === "error" && <ErrorAlert error={reveal.state.error} />}
+
+            <div className="actions actions--end">
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                icon="reveal"
+                isLoading={reveal.state.status === "loading"}
+                loadingLabel="Verifying and decrypting…"
               >
-                {(describedBy) => (
-                  <PasswordInput
-                    id="reveal-passphrase"
-                    value={passphrase}
-                    onChange={setPassphrase}
-                    describedBy={describedBy}
-                    autoComplete="off"
-                  />
-                )}
-              </Field>
+                Reveal message
+              </Button>
             </div>
-          )}
-        </section>
+          </form>
 
-        <Disclosure summary="Advanced options">
-          <ChoiceGroup
-            name="reveal-layout"
-            legend="Where the sender placed the bits"
-            choices={LAYOUT_CHOICES}
-            value={layout}
-            onChange={setLayout}
-            layout="stack"
-          />
-        </Disclosure>
+          {reveal.state.status === "success" && <RevealedMessage result={reveal.state.data} onClear={reveal.reset} />}
+        </div>
+      </PageBody>
+    </>
+  );
+}
 
-        {reveal.state.status === "error" && <ErrorAlert error={reveal.state.error} />}
+interface PrivateKeyFieldsProps {
+  privateKey: { name: string; pem: string } | null;
+  onChoose: (file: File) => void;
+  onRemove: () => void;
+  error: string | null;
+  passphrase: string;
+  onPassphraseChange: (value: string) => void;
+}
 
-        <div className="form__actions">
-          <Button
-            type="submit"
-            variant="primary"
-            icon="reveal"
-            isLoading={reveal.state.status === "loading"}
-            loadingLabel="Verifying and decrypting…"
-          >
-            Reveal message
+function PrivateKeyFields({ privateKey, onChoose, onRemove, error, passphrase, onPassphraseChange }: PrivateKeyFieldsProps) {
+  return (
+    <div className="stack">
+      {privateKey ? (
+        <div className="file-chip">
+          <span>
+            Private key <code className="fingerprint">{privateKey.name}</code>
+          </span>
+          <Button variant="ghost" size="sm" icon="close" onClick={onRemove}>
+            Remove
           </Button>
         </div>
-      </form>
-
-      {reveal.state.status === "success" && (
-        <RevealedMessage result={reveal.state.data} sourceName={image ? describeFile(image) : ""} onClear={reveal.reset} />
+      ) : (
+        <FileDrop
+          label="Drop your private key here or click to browse"
+          hint=".pem file. Read in your browser and sent only with this request; never stored."
+          accept=".pem,.key,.txt,application/x-pem-file"
+          icon="key"
+          onFile={onChoose}
+          error={error}
+        />
       )}
-    </>
+      <Field
+        id="reveal-passphrase"
+        label="Key passphrase"
+        optional
+        hint="Only if you set a passphrase when you created the key."
+      >
+        {(describedBy) => (
+          <PasswordInput
+            id="reveal-passphrase"
+            value={passphrase}
+            onChange={onPassphraseChange}
+            describedBy={describedBy}
+            autoComplete="off"
+          />
+        )}
+      </Field>
+    </div>
   );
 }
 
@@ -207,44 +236,42 @@ function describeStegoProblem(file: File, maxBytes: number | undefined): string 
   return null;
 }
 
-interface RevealedMessageProps {
-  result: RevealResult;
-  sourceName: string;
-  onClear: () => void;
-}
-
-function RevealedMessage({ result, sourceName, onClear }: RevealedMessageProps) {
+function RevealedMessage({ result, onClear }: { result: RevealResult; onClear: () => void }) {
   const isText = result.encoding === "utf-8";
   return (
-    <section className="card stack result" aria-labelledby="revealed-heading">
-      <Alert tone="success" title="Message verified and decrypted" live>
-        It was not changed after it was hidden. {formatBytes(result.message_bytes)} from {sourceName}.
-      </Alert>
-      <h2 id="revealed-heading" className="section__title">
-        Hidden message
-      </h2>
-      {!isText && (
-        <Alert tone="info">This message isn't text, so it is shown in Base64. Download it to get the original bytes.</Alert>
-      )}
+    <Card
+      title="Hidden message"
+      description="Verified: it was not changed after it was hidden."
+      isLive
+      footer={
+        <>
+          <span className="inline-stats">
+            <span>{formatBytes(result.message_bytes)}</span>
+            <span>{isText ? "UTF-8 text" : "Binary, shown as Base64"}</span>
+          </span>
+          <div className="actions">
+            <Button variant="ghost" size="sm" icon="trash" onClick={onClear}>
+              Clear
+            </Button>
+            {!isText && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="download"
+                onClick={() => saveFile(base64ToBlob(result.message), "message.bin")}
+              >
+                Download bytes
+              </Button>
+            )}
+            <CopyButton text={result.message} label="Copy message" />
+          </div>
+        </>
+      }
+    >
       <pre className="message-box" role="region" tabIndex={0} aria-label="Decrypted message">
         {result.message}
       </pre>
-      <div className="form__actions">
-        <CopyButton text={result.message} label="Copy message" />
-        {!isText && (
-          <Button
-            variant="secondary"
-            icon="download"
-            onClick={() => saveFile(base64ToBlob(result.message), "message.bin")}
-          >
-            Download bytes
-          </Button>
-        )}
-        <Button variant="ghost" icon="trash" onClick={onClear}>
-          Clear from screen
-        </Button>
-      </div>
-    </section>
+    </Card>
   );
 }
 

@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 
 import { Alert } from "../components/Alert";
 import { Button } from "../components/Button";
+import { Card } from "../components/Card";
 import { CopyButton } from "../components/CopyButton";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
-import { PageHeader } from "../components/PageHeader";
+import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
 import { api, type KeyPair, type PublicKeyInfo } from "../lib/api";
 import { saveFile } from "../lib/download";
@@ -19,13 +20,16 @@ export function KeysPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Set up"
         title="Keys"
         description="Public-key protection lets people send you messages without sharing a password. Create your key pair once, then give your public key to anyone who should be able to write to you."
       />
-      <div className="stack-lg">
-        <GenerateKeyPair />
-        <RecipientKey />
-      </div>
+      <PageBody isNarrow>
+        <div className="stack-lg">
+          <GenerateKeyPair />
+          <RecipientKey />
+        </div>
+      </PageBody>
     </>
   );
 }
@@ -50,116 +54,128 @@ function GenerateKeyPair() {
     setConfirmPassphrase("");
   }
 
+  if (generation.state.status === "success") {
+    return <GeneratedKeys keys={generation.state.data} onClear={clearKeys} />;
+  }
+
   return (
-    <section className="card stack" aria-labelledby="generate-heading">
-      <h2 id="generate-heading" className="section__title">
-        Your key pair
-      </h2>
-      {generation.state.status === "success" ? (
-        <GeneratedKeys keys={generation.state.data} onClear={clearKeys} />
-      ) : (
-        <form className="stack" onSubmit={handleSubmit} noValidate>
-          <div className="grid-2">
-            <Field
-              id="key-passphrase"
-              label="Passphrase for the private key file"
-              optional
-              hint="Encrypts the downloaded private key, so a stolen file is useless without it."
-            >
-              {(describedBy) => (
-                <PasswordInput
-                  id="key-passphrase"
-                  value={passphrase}
-                  onChange={setPassphrase}
-                  describedBy={describedBy}
-                  autoComplete="new-password"
-                />
-              )}
-            </Field>
-            <Field
-              id="key-passphrase-confirm"
-              label="Confirm passphrase"
-              optional
-              error={mismatch ? "The passphrases don't match." : null}
-            >
-              {(describedBy) => (
-                <PasswordInput
-                  id="key-passphrase-confirm"
-                  value={confirmPassphrase}
-                  onChange={setConfirmPassphrase}
-                  describedBy={describedBy}
-                  isInvalid={mismatch}
-                  autoComplete="new-password"
-                />
-              )}
-            </Field>
-          </div>
-          {generation.state.status === "error" && <ErrorAlert error={generation.state.error} />}
-          <div className="form__actions">
+    <form onSubmit={handleSubmit} noValidate>
+      <Card
+        title="Your key pair"
+        description="An X25519 key pair. The public key is for sharing; the private key opens messages sent to you."
+        footer={
+          <>
+            <span>Nothing is stored. You download both files once.</span>
             <Button
               type="submit"
               variant="primary"
+              size="sm"
               icon="key"
               isLoading={generation.state.status === "loading"}
               loadingLabel="Generating…"
             >
               Generate key pair
             </Button>
-          </div>
-        </form>
-      )}
-    </section>
+          </>
+        }
+      >
+        <div className="grid-2">
+          <Field id="key-passphrase" label="Passphrase" optional>
+            {(describedBy) => (
+              <PasswordInput
+                id="key-passphrase"
+                value={passphrase}
+                onChange={setPassphrase}
+                describedBy={describedBy ? `${describedBy} key-passphrase-advice` : "key-passphrase-advice"}
+                autoComplete="new-password"
+              />
+            )}
+          </Field>
+          <Field
+            id="key-passphrase-confirm"
+            label="Confirm passphrase"
+            optional
+            error={mismatch ? "The passphrases don't match." : null}
+          >
+            {(describedBy) => (
+              <PasswordInput
+                id="key-passphrase-confirm"
+                value={confirmPassphrase}
+                onChange={setConfirmPassphrase}
+                describedBy={describedBy}
+                isInvalid={mismatch}
+                autoComplete="new-password"
+              />
+            )}
+          </Field>
+        </div>
+        <p className="field__hint" id="key-passphrase-advice">
+          Encrypts the downloaded private key file, so a stolen copy is useless without it.
+        </p>
+        {generation.state.status === "error" && <ErrorAlert error={generation.state.error} />}
+      </Card>
+    </form>
   );
 }
 
 function GeneratedKeys({ keys, onClear }: { keys: KeyPair; onClear: () => void }) {
   return (
-    <div className="stack">
+    <div className="stack-lg">
       <Alert tone="success" title="Key pair created" live>
         Download both files now. They are not stored anywhere, so this is your only chance.
       </Alert>
-
-      <div className="stack-sm">
-        <h3 className="subsection-title">Public key: share this</h3>
+      <Card
+        step="Share this"
+        title="Public key"
+        footer={
+          <>
+            <span>
+              Fingerprint <code className="fingerprint">{keys.fingerprint}</code>
+            </span>
+            <div className="actions">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="download"
+                onClick={() => saveFile(keys.public_key_pem, "stegoshield-public.pem", PEM_MIME_TYPE)}
+              >
+                Download .pem
+              </Button>
+              <CopyButton text={keys.public_key_base64} label="Copy" />
+            </div>
+          </>
+        }
+      >
         <pre className="code-block" role="region" tabIndex={0} aria-label="Your public key">
           {keys.public_key_base64}
         </pre>
-        <p className="text-muted">
-          Fingerprint <code className="fingerprint">{keys.fingerprint}</code>. Senders can compare it to make sure they
-          have your real key.
-        </p>
-        <div className="form__actions">
-          <CopyButton text={keys.public_key_base64} label="Copy public key" />
-          <Button
-            variant="secondary"
-            icon="download"
-            onClick={() => saveFile(keys.public_key_pem, "stegoshield-public.pem", PEM_MIME_TYPE)}
-          >
-            Download public key
-          </Button>
-        </div>
-      </div>
-
-      <div className="stack-sm">
-        <h3 className="subsection-title">Private key: keep this secret</h3>
+        <p className="text-muted">Senders can compare the fingerprint to be sure they have your real key.</p>
+      </Card>
+      <Card
+        step="Keep this secret"
+        title="Private key"
+        footer={
+          <>
+            <Button variant="ghost" size="sm" icon="trash" onClick={onClear}>
+              Clear keys from screen
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon="download"
+              onClick={() => saveFile(keys.private_key_pem, "stegoshield-private.pem", PEM_MIME_TYPE)}
+            >
+              Download private key
+            </Button>
+          </>
+        }
+      >
         <Alert tone="warning" title="Anyone with this file can read messages sent to you">
           Store it somewhere safe and never send it to anyone. If you lose it, messages sent to this key can't be
           recovered.
           {!keys.is_private_key_encrypted && " It has no passphrase, so protect the file itself."}
         </Alert>
-        <div className="form__actions">
-          <Button
-            variant="secondary"
-            icon="download"
-            onClick={() => saveFile(keys.private_key_pem, "stegoshield-private.pem", PEM_MIME_TYPE)}
-          >
-            Download private key
-          </Button>
-          <Button variant="ghost" icon="trash" onClick={onClear}>
-            Clear keys from screen
-          </Button>
-        </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -182,28 +198,43 @@ function RecipientKey() {
   }
 
   return (
-    <section className="card stack" aria-labelledby="recipient-heading">
-      <h2 id="recipient-heading" className="section__title">
-        Someone else's public key
-      </h2>
-      <p className="text-muted">
-        Check a key someone gave you, then use it on the <Link to="/hide">Hide</Link> page. It is kept only until you
-        close this tab.
-      </p>
-
-      {recipientKey && (
-        <div className="file-chip">
-          <span>
-            Saved for this session: <code className="fingerprint">{recipientKey.fingerprint}</code>
-          </span>
-          <Button variant="ghost" icon="trash" onClick={() => setRecipientKey(null)}>
-            Remove
-          </Button>
-        </div>
-      )}
-
-      <form className="stack" onSubmit={handleSubmit} noValidate>
-        <Field id="recipient-key" label="Public key" hint="Paste it as PEM, Base64 or hex.">
+    <form onSubmit={handleSubmit} noValidate>
+      <Card
+        title="Someone else's public key"
+        description={
+          <>
+            Check a key someone gave you, then use it on the <Link to="/hide">Hide</Link> page. It's kept only until you
+            close this tab.
+          </>
+        }
+        footer={
+          <>
+            <span>PEM, Base64 or hex</span>
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              icon="check"
+              disabled={!keyText.trim()}
+              isLoading={inspection.state.status === "loading"}
+              loadingLabel="Checking…"
+            >
+              Check key
+            </Button>
+          </>
+        }
+      >
+        {recipientKey && (
+          <div className="file-chip">
+            <span>
+              In use for hiding <code className="fingerprint">{recipientKey.fingerprint}</code>
+            </span>
+            <Button variant="ghost" size="sm" icon="trash" onClick={() => setRecipientKey(null)}>
+              Remove
+            </Button>
+          </div>
+        )}
+        <Field id="recipient-key" label="Public key">
           {(describedBy) => (
             <textarea
               id="recipient-key"
@@ -228,6 +259,7 @@ function RecipientKey() {
             action={
               <Button
                 variant="primary"
+                size="sm"
                 onClick={() => {
                   if (inspection.state.status === "success") saveChecked(inspection.state.data);
                 }}
@@ -240,19 +272,7 @@ function RecipientKey() {
             key's owner before relying on it.
           </Alert>
         )}
-        <div className="form__actions">
-          <Button
-            type="submit"
-            variant="secondary"
-            icon="check"
-            disabled={!keyText.trim()}
-            isLoading={inspection.state.status === "loading"}
-            loadingLabel="Checking…"
-          >
-            Check key
-          </Button>
-        </div>
-      </form>
-    </section>
+      </Card>
+    </form>
   );
 }

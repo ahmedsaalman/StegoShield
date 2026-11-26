@@ -5,9 +5,11 @@ import { Icon, type IconName } from "./Icon";
 type ThemePreference = "system" | "light" | "dark";
 
 const STORAGE_KEY = "stegoshield-theme";
-const ORDER: ThemePreference[] = ["system", "light", "dark"];
-const ICONS: Record<ThemePreference, IconName> = { system: "monitor", light: "sun", dark: "moon" };
-const LABELS: Record<ThemePreference, string> = { system: "System", light: "Light", dark: "Dark" };
+const OPTIONS: { value: ThemePreference; label: string; icon: IconName }[] = [
+  { value: "system", label: "System theme", icon: "monitor" },
+  { value: "light", label: "Light theme", icon: "sun" },
+  { value: "dark", label: "Dark theme", icon: "moon" },
+];
 
 function readStoredPreference(): ThemePreference {
   try {
@@ -26,7 +28,8 @@ function storePreference(preference: ThemePreference): void {
   }
 }
 
-export function ThemeToggle() {
+/** Three-way switch (system / light / dark) built from native radio buttons. */
+export function ThemeSwitcher() {
   const [preference, setPreference] = useState<ThemePreference>(readStoredPreference);
 
   useEffect(() => {
@@ -36,16 +39,22 @@ export function ThemeToggle() {
     storePreference(preference);
   }, [preference]);
 
-  const next = ORDER[(ORDER.indexOf(preference) + 1) % ORDER.length] ?? "system";
   return (
-    <button
-      type="button"
-      className="theme-toggle"
-      onClick={() => setPreference(next)}
-      aria-label={`Colour theme: ${LABELS[preference]}. Switch to ${LABELS[next]}.`}
-    >
-      <Icon name={ICONS[preference]} size={18} />
-      <span>{LABELS[preference]} theme</span>
-    </button>
+    <fieldset className="theme-switcher">
+      <legend className="visually-hidden">Colour theme</legend>
+      {OPTIONS.map((option) => (
+        <label key={option.value} className="theme-switcher__option" title={option.label}>
+          <input
+            type="radio"
+            name="theme"
+            value={option.value}
+            checked={preference === option.value}
+            onChange={() => setPreference(option.value)}
+          />
+          <Icon name={option.icon} />
+          <span className="visually-hidden">{option.label}</span>
+        </label>
+      ))}
+    </fieldset>
   );
 }

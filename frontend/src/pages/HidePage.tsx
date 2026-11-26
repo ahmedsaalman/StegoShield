@@ -4,14 +4,16 @@ import { Link } from "react-router-dom";
 import { Alert } from "../components/Alert";
 import { BlobImage } from "../components/BlobImage";
 import { Button } from "../components/Button";
+import { Card } from "../components/Card";
 import { ChoiceGroup } from "../components/ChoiceGroup";
 import { Disclosure } from "../components/Disclosure";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
 import { FileDrop } from "../components/FileDrop";
+import { Icon } from "../components/Icon";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
-import { PageHeader } from "../components/PageHeader";
+import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -45,6 +47,11 @@ const FIELD_IDS = {
   confirmPassword: "hide-password-confirm",
   recipientKey: "hide-recipient-key",
 } as const;
+
+const SENDING_TIPS = [
+  "Send the PNG as a file or document attachment, not as a photo. Apps that recompress photos erase the message.",
+  "Don't edit, crop, resize or screenshot the image.",
+];
 
 export function HidePage() {
   const { handoffCover, setHandoffCover, recipientKey: savedKey } = useAppState();
@@ -89,10 +96,7 @@ export function HidePage() {
     }
     if (!cover.file) return;
     const coverFile = cover.file;
-    const protection =
-      method === "password"
-        ? { method, password }
-        : { method, recipientPublicKey: recipientKey };
+    const protection = method === "password" ? { method, password } : { method, recipientPublicKey: recipientKey };
     void hideRequest.run((signal) => api.hide({ cover: coverFile, message, protection, algorithm, layout }, signal));
   }
 
@@ -117,134 +121,122 @@ export function HidePage() {
   return (
     <>
       <PageHeader
+        eyebrow="Send"
         title="Hide a message"
-        description="Encrypt a message and hide it in an image. The result looks the same as the original, and only someone with the password or the matching private key can read it."
+        description="Encrypt a message and hide it in an image. The result looks identical to the original; only the password or the matching private key can read it."
       />
-      <form className="stack-lg form" onSubmit={handleSubmit} noValidate>
-        <CoverStep cover={cover} error={visibleErrors.cover} />
-        <MessageStep
-          message={message}
-          onMessageChange={setMessage}
-          messageBytes={messageBytes}
-          capacityBytes={capacityBytes}
-          error={visibleErrors.message}
-          cover={cover.file}
-          method={method}
-        />
-        <section className="card stack" aria-labelledby="protect-heading">
-          <StepHeading id="protect-heading" number={3} title="Choose how to protect it" />
-          <ChoiceGroup
-            name="hide-method"
-            legend="How to protect the message"
-            choices={METHOD_CHOICES}
-            value={method}
-            onChange={setMethod}
-            isLegendVisible={false}
+      <PageBody isNarrow>
+        <form className="stack-lg" onSubmit={handleSubmit} noValidate>
+          <CoverStep cover={cover} error={visibleErrors.cover} />
+          <MessageStep
+            message={message}
+            onMessageChange={setMessage}
+            messageBytes={messageBytes}
+            capacityBytes={capacityBytes}
+            error={visibleErrors.message}
+            cover={cover.file}
+            method={method}
           />
-          {method === "password" ? (
-            <PasswordFields
-              password={password}
-              confirmPassword={confirmPassword}
-              onPasswordChange={setPassword}
-              onConfirmChange={setConfirmPassword}
-              errors={visibleErrors}
-            />
-          ) : (
-            <RecipientKeyField
-              value={recipientKey}
-              onChange={(value) => {
-                setRecipientKey(value);
-                keyCheck.reset();
-              }}
-              onCheck={() => void keyCheck.run((signal) => api.inspectPublicKey(recipientKey, signal))}
-              check={keyCheck.state}
-              error={visibleErrors.recipientKey}
-            />
-          )}
-        </section>
-
-        <Disclosure summary="Advanced options">
-          <div className="stack">
+          <Card step="Step 03" title="Protection" description="Choose who can open the message.">
             <ChoiceGroup
-              name="hide-algorithm"
-              legend="How pixels are changed"
-              choices={ALGORITHM_CHOICES}
-              value={algorithm}
-              onChange={setAlgorithm}
-              layout="stack"
+              name="hide-method"
+              legend="How to protect the message"
+              choices={METHOD_CHOICES}
+              value={method}
+              onChange={setMethod}
+              isLegendVisible={false}
             />
-            <ChoiceGroup
-              name="hide-layout"
-              legend="Where bits are placed"
-              choices={LAYOUT_CHOICES}
-              value={layout}
-              onChange={setLayout}
-              layout="stack"
-            />
-            {layout === "sequential" && (
-              <Alert tone="warning" title="Sequential placement is for experiments only">
-                Anyone can find the message bits without the key, and detectors spot it easily. The message itself stays
-                encrypted.
-              </Alert>
+            {method === "password" ? (
+              <PasswordFields
+                password={password}
+                confirmPassword={confirmPassword}
+                onPasswordChange={setPassword}
+                onConfirmChange={setConfirmPassword}
+                errors={visibleErrors}
+              />
+            ) : (
+              <RecipientKeyField
+                value={recipientKey}
+                onChange={(value) => {
+                  setRecipientKey(value);
+                  keyCheck.reset();
+                }}
+                onCheck={() => void keyCheck.run((signal) => api.inspectPublicKey(recipientKey, signal))}
+                check={keyCheck.state}
+                error={visibleErrors.recipientKey}
+              />
             )}
+          </Card>
+
+          <Disclosure summary="Advanced options">
+            <div className="stack">
+              <ChoiceGroup
+                name="hide-algorithm"
+                legend="How pixels are changed"
+                choices={ALGORITHM_CHOICES}
+                value={algorithm}
+                onChange={setAlgorithm}
+                layout="stack"
+              />
+              <ChoiceGroup
+                name="hide-layout"
+                legend="Where bits are placed"
+                choices={LAYOUT_CHOICES}
+                value={layout}
+                onChange={setLayout}
+                layout="stack"
+              />
+              {layout === "sequential" && (
+                <Alert tone="warning" title="Sequential placement is for experiments only">
+                  Anyone can find the message bits without the key, and detectors spot it easily. The message itself
+                  stays encrypted.
+                </Alert>
+              )}
+            </div>
+          </Disclosure>
+
+          {hideRequest.state.status === "error" && <ErrorAlert error={hideRequest.state.error} />}
+          {hasTriedSubmit && firstInvalidField(errors) && (
+            <Alert tone="danger" title="Check the highlighted fields" live>
+              Fix the items marked above, then try again.
+            </Alert>
+          )}
+
+          <div className="actions actions--end">
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              icon="lock"
+              isLoading={hideRequest.state.status === "loading"}
+              loadingLabel="Encrypting and hiding…"
+            >
+              Hide message
+            </Button>
           </div>
-        </Disclosure>
-
-        {hideRequest.state.status === "error" && <ErrorAlert error={hideRequest.state.error} />}
-        {hasTriedSubmit && firstInvalidField(errors) && (
-          <Alert tone="danger" title="Check the highlighted fields" live>
-            Fix the items marked above, then try again.
-          </Alert>
-        )}
-
-        <div className="form__actions">
-          <Button
-            type="submit"
-            variant="primary"
-            icon="lock"
-            isLoading={hideRequest.state.status === "loading"}
-            loadingLabel="Encrypting and hiding…"
-          >
-            Hide message
-          </Button>
-        </div>
-      </form>
+        </form>
+      </PageBody>
     </>
-  );
-}
-
-function StepHeading({ id, number, title }: { id: string; number: number; title: string }) {
-  return (
-    <h2 id={id} className="step-heading">
-      <span className="step-heading__number" aria-hidden="true">
-        {number}
-      </span>
-      <span>
-        <span className="visually-hidden">Step {number}: </span>
-        {title}
-      </span>
-    </h2>
   );
 }
 
 function CoverStep({ cover, error }: { cover: CoverImage; error: string | undefined }) {
   return (
-    <section className="card stack" aria-labelledby="cover-heading">
-      <StepHeading id="cover-heading" number={1} title="Choose a cover image" />
+    <Card
+      step="Step 01"
+      title="Cover image"
+      description="Detailed photos (foliage, crowds, textures) hide messages best."
+      footer={<CapacityFooter state={cover.capacity} />}
+    >
       {cover.file ? (
-        <ImagePreview
-          file={cover.file}
-          alt="Your chosen cover"
-          onRemove={cover.clear}
-          details={<CapacitySummary state={cover.capacity} />}
-        />
+        <ImagePreview file={cover.file} alt="Your chosen cover" onRemove={cover.clear} />
       ) : (
         <div id={FIELD_IDS.cover} tabIndex={-1}>
           <FileDrop
-            label="Choose an image or drag it here"
-            hint="PNG, JPEG, BMP or WebP. Detailed photos (foliage, crowds, textures) hide messages best."
+            label="Drop an image here or click to browse"
+            hint="PNG, JPEG, BMP or WebP"
             accept={COVER_ACCEPT}
-            icon="image"
+            icon="upload"
             onFile={cover.choose}
             error={cover.fileError ?? error ?? null}
           />
@@ -256,26 +248,20 @@ function CoverStep({ cover, error }: { cover: CoverImage; error: string | undefi
           the message.
         </Alert>
       )}
-    </section>
+    </Card>
   );
 }
 
-function CapacitySummary({ state }: { state: RequestState<Capacity> }) {
-  if (state.status === "loading") return <p className="text-muted">Measuring capacity…</p>;
-  if (state.status === "error") return <ErrorAlert error={state.error} />;
-  if (state.status !== "success") return null;
+function CapacityFooter({ state }: { state: RequestState<Capacity> }) {
+  if (state.status === "loading") return <span>Measuring capacity…</span>;
+  if (state.status === "error") return <span>{state.error.message}</span>;
+  if (state.status !== "success") return <span>Capacity appears once you choose an image.</span>;
   const { width, height, max_message_bytes } = state.data;
   return (
-    <dl className="facts">
-      <div>
-        <dt>Size</dt>
-        <dd>{formatDimensions(width, height)}</dd>
-      </div>
-      <div>
-        <dt>Holds up to</dt>
-        <dd>{formatBytes(max_message_bytes.password)}</dd>
-      </div>
-    </dl>
+    <span className="inline-stats">
+      <span>{formatDimensions(width, height)}</span>
+      <span>Holds up to {formatBytes(max_message_bytes.password)}</span>
+    </span>
   );
 }
 
@@ -291,9 +277,22 @@ interface MessageStepProps {
 
 function MessageStep({ message, onMessageChange, messageBytes, capacityBytes, error, cover, method }: MessageStepProps) {
   const isOverCapacity = capacityBytes !== null && messageBytes > capacityBytes;
+  const canCheckRisk = cover !== null && messageBytes > 0 && !isOverCapacity;
   return (
-    <section className="card stack" aria-labelledby="message-heading">
-      <StepHeading id="message-heading" number={2} title="Write your message" />
+    <Card
+      step="Step 02"
+      title="Message"
+      footer={
+        <>
+          <span className="inline-stats" id="hide-message-usage">
+            {capacityBytes !== null
+              ? `${formatBytes(messageBytes)} of ${formatBytes(capacityBytes)}`
+              : formatBytes(messageBytes)}
+          </span>
+          {canCheckRisk && <RiskCheck cover={cover} messageBytes={messageBytes} method={method} />}
+        </>
+      }
+    >
       <Field id={FIELD_IDS.message} label="Secret message" error={error ?? null}>
         {(describedBy) => (
           <textarea
@@ -301,41 +300,44 @@ function MessageStep({ message, onMessageChange, messageBytes, capacityBytes, er
             className="input textarea"
             rows={6}
             value={message}
+            placeholder="Write the message you want to hide…"
             onChange={(event) => onMessageChange(event.target.value)}
             aria-describedby={describedBy ? `${describedBy} hide-message-usage` : "hide-message-usage"}
             aria-invalid={error ? true : undefined}
           />
         )}
       </Field>
-      <div id="hide-message-usage">
-        {capacityBytes !== null ? (
-          <Meter
-            label="Space used"
-            value={capacityBytes > 0 ? messageBytes / capacityBytes : 1}
-            valueText={`${formatBytes(messageBytes)} of ${formatBytes(capacityBytes)}`}
-            tone={isOverCapacity ? "danger" : "neutral"}
-          />
-        ) : (
-          <p className="text-muted">{formatBytes(messageBytes)} · choose an image to see how much fits</p>
-        )}
-      </div>
-      {cover && messageBytes > 0 && !isOverCapacity && (
-        <RiskCheck cover={cover} messageBytes={messageBytes} method={method} />
+      {capacityBytes !== null && (
+        <Meter
+          label="Space used"
+          value={capacityBytes > 0 ? messageBytes / capacityBytes : 1}
+          valueText={`${formatBytes(messageBytes)} of ${formatBytes(capacityBytes)}`}
+          tone={isOverCapacity ? "danger" : "neutral"}
+        />
       )}
-    </section>
+    </Card>
   );
 }
 
 function RiskCheck({ cover, messageBytes, method }: { cover: File; messageBytes: number; method: KeyMethod }) {
   const check = useRequest<Preflight>();
   const [checked, setChecked] = useState<{ cover: File; method: KeyMethod; bytes: number } | null>(null);
-
   const isForThisCover = checked?.cover === cover && checked.method === method;
   const isStale = checked?.bytes !== messageBytes;
+  const result = check.state.status === "success" && isForThisCover ? check.state.data : null;
+
   return (
     <div className="inline-check">
+      {result && (
+        <span role="status" className="inline-check">
+          <StatusBadge status={RISK_PRESENTATION[result.risk.level]} value={formatProbability(result.risk.probability)} />
+          {isStale && <span>Message changed</span>}
+        </span>
+      )}
+      {check.state.status === "error" && <span role="alert">{check.state.error.message}</span>}
       <Button
         variant="secondary"
+        size="sm"
         icon="gauge"
         isLoading={check.state.status === "loading"}
         loadingLabel="Checking…"
@@ -344,21 +346,8 @@ function RiskCheck({ cover, messageBytes, method }: { cover: File; messageBytes:
           void check.run((signal) => api.preflight(cover, messageBytes, method, signal));
         }}
       >
-        {check.state.status === "success" && isForThisCover ? "Check again" : "Check detection risk"}
+        {result ? "Check again" : "Check detection risk"}
       </Button>
-      {check.state.status === "success" && isForThisCover && (
-        <div className="inline-check__result" role="status">
-          <StatusBadge
-            status={RISK_PRESENTATION[check.state.data.risk.level]}
-            value={formatProbability(check.state.data.risk.probability)}
-          />
-          <span className="text-muted">
-            {isStale ? "Message changed since this check. " : ""}
-            <Link to="/preflight">Full pre-flight check</Link>
-          </span>
-        </div>
-      )}
-      {check.state.status === "error" && <ErrorAlert error={check.state.error} />}
     </div>
   );
 }
@@ -374,40 +363,38 @@ interface PasswordFieldsProps {
 function PasswordFields({ password, confirmPassword, onPasswordChange, onConfirmChange, errors }: PasswordFieldsProps) {
   const isShort = password.length > 0 && password.length < RECOMMENDED_PASSWORD_LENGTH;
   return (
-    <div className="grid-2">
-      <Field
-        id={FIELD_IDS.password}
-        label="Password"
-        hint={
-          isShort
-            ? `Short passwords can be guessed. Use ${RECOMMENDED_PASSWORD_LENGTH}+ characters; a few unrelated words work well.`
-            : "Share it with the recipient through a different channel than the image."
-        }
-        error={errors.password ?? null}
-      >
-        {(describedBy) => (
-          <PasswordInput
-            id={FIELD_IDS.password}
-            value={password}
-            onChange={onPasswordChange}
-            describedBy={describedBy}
-            isInvalid={Boolean(errors.password)}
-            autoComplete="new-password"
-          />
-        )}
-      </Field>
-      <Field id={FIELD_IDS.confirmPassword} label="Confirm password" error={errors.confirmPassword ?? null}>
-        {(describedBy) => (
-          <PasswordInput
-            id={FIELD_IDS.confirmPassword}
-            value={confirmPassword}
-            onChange={onConfirmChange}
-            describedBy={describedBy}
-            isInvalid={Boolean(errors.confirmPassword)}
-            autoComplete="new-password"
-          />
-        )}
-      </Field>
+    <div className="stack">
+      <div className="grid-2">
+        <Field id={FIELD_IDS.password} label="Password" error={errors.password ?? null}>
+          {(describedBy) => (
+            <PasswordInput
+              id={FIELD_IDS.password}
+              value={password}
+              onChange={onPasswordChange}
+              describedBy={describedBy ? `${describedBy} hide-password-advice` : "hide-password-advice"}
+              isInvalid={Boolean(errors.password)}
+              autoComplete="new-password"
+            />
+          )}
+        </Field>
+        <Field id={FIELD_IDS.confirmPassword} label="Confirm password" error={errors.confirmPassword ?? null}>
+          {(describedBy) => (
+            <PasswordInput
+              id={FIELD_IDS.confirmPassword}
+              value={confirmPassword}
+              onChange={onConfirmChange}
+              describedBy={describedBy}
+              isInvalid={Boolean(errors.confirmPassword)}
+              autoComplete="new-password"
+            />
+          )}
+        </Field>
+      </div>
+      <p className="field__hint" id="hide-password-advice">
+        {isShort
+          ? `Short passwords can be guessed. Use ${RECOMMENDED_PASSWORD_LENGTH}+ characters; a few unrelated words work well.`
+          : "Share the password with the recipient through a different channel than the image."}
+      </p>
     </div>
   );
 }
@@ -466,43 +453,67 @@ interface HideResultProps {
 }
 
 function HideResult({ cover, result, usedPassword, onStartOver }: HideResultProps) {
+  const tips = usedPassword
+    ? [...SENDING_TIPS, "Share the password through a different channel than the image."]
+    : SENDING_TIPS;
   return (
     <>
-      <PageHeader title="Your message is hidden" description="Download the new image and send it to the recipient." />
-      <div className="stack-lg">
-        <Alert tone="success" title="Done: the message is encrypted and hidden" live>
-          The two images below should look identical. Only the password or the recipient's private key can reveal the
-          message.
-        </Alert>
-        <div className="compare">
-          <figure className="compare__item">
-            <BlobImage blob={cover} alt="Original cover" />
-            <figcaption>Original</figcaption>
-          </figure>
-          <figure className="compare__item">
-            <BlobImage blob={result.blob} alt="Cover with the message hidden in it" />
-            <figcaption>With hidden message · {formatBytes(result.blob.size)}</figcaption>
-          </figure>
+      <PageHeader
+        eyebrow="Send"
+        title="Your message is hidden"
+        description="Download the new image and send it to the recipient. Only the password or their private key can reveal the message."
+      />
+      <PageBody isNarrow>
+        <div className="stack-lg">
+          <Alert tone="success" title="Encrypted and hidden" live>
+            The two images below should look identical.
+          </Alert>
+          <Card
+            title="Result"
+            footer={
+              <>
+                <span className="inline-stats">
+                  <span>{result.filename}</span>
+                  <span>{formatBytes(result.blob.size)}</span>
+                </span>
+                <div className="actions">
+                  <Button variant="ghost" size="sm" onClick={onStartOver}>
+                    Hide another
+                  </Button>
+                  <Button variant="primary" size="sm" icon="download" onClick={() => saveFile(result.blob, result.filename)}>
+                    Download {result.filename}
+                  </Button>
+                </div>
+              </>
+            }
+          >
+            <div className="compare">
+              <figure>
+                <div className="image-frame">
+                  <BlobImage blob={cover} alt="Original cover" />
+                </div>
+                <figcaption>Original</figcaption>
+              </figure>
+              <figure>
+                <div className="image-frame">
+                  <BlobImage blob={result.blob} alt="Cover with the message hidden in it" />
+                </div>
+                <figcaption>With hidden message</figcaption>
+              </figure>
+            </div>
+          </Card>
+          <Card title="Before you send it">
+            <ul className="check-list">
+              {tips.map((tip) => (
+                <li key={tip}>
+                  <Icon name="check" />
+                  <span>{tip}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
         </div>
-        <div className="form__actions">
-          <Button variant="primary" icon="download" onClick={() => saveFile(result.blob, result.filename)}>
-            Download {result.filename}
-          </Button>
-          <Button variant="secondary" onClick={onStartOver}>
-            Hide another message
-          </Button>
-        </div>
-        <section className="card" aria-labelledby="sending-heading">
-          <h2 id="sending-heading" className="section__title">
-            Before you send it
-          </h2>
-          <ul className="list">
-            <li>Send the PNG as a file or document attachment, not as a photo. Apps that recompress photos erase the message.</li>
-            <li>Don't edit, crop, resize or screenshot the image.</li>
-            {usedPassword && <li>Share the password through a different channel than the image.</li>}
-          </ul>
-        </section>
-      </div>
+      </PageBody>
     </>
   );
 }

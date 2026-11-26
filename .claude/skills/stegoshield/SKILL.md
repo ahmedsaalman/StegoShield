@@ -104,7 +104,7 @@ Code is read far more than it is written; optimise for the reader. Leave every f
 - All server calls go through `api.*` in `lib/api.ts`; components never call `fetch` directly. Async state uses `useRequest` (aborts stale requests).
 - Pure logic (validation, formatting, labels) lives in `lib/` as plain functions with unit tests; components stay presentational.
 - Function components and hooks only. Respect the `react-hooks` lint rules (no setState in effects, no ref reads during render).
-- Styling uses the tokens in `styles.css` (colour, spacing, radius, 4 font sizes). No inline colours, no per-component CSS files, no UI library.
+- Styling uses the tokens in `styles.css` (colour, spacing, radius, type scale). No inline colours, no per-component CSS files, no UI library.
 
 ## 5. Testing
 
@@ -130,9 +130,20 @@ Code is read far more than it is written; optimise for the reader. Leave every f
 
 Platform: responsive web, desktop-first, must work at 390 px wide with no horizontal scroll (sidebar collapses to a top bar + menu below 900 px). Users are technical but **not** cryptographers: explain terms in plain words.
 
-### 6.2 Page contract
+### 6.2 Visual language (Geist-inspired, chosen 26 Nov 2026)
+- Near-monochrome: `--fg`/`--bg` plus greys. Colour only for status (success/info/warning/danger), always with words.
+- 1px `--border` lines, no drop shadows. Radii 6 / 8 / 12 px.
+- Geist Sans for interface text (14px base, 16px for inputs on touch); Geist Mono for numbers, sizes, fingerprints, step labels ("STEP 01") and eyebrows. Headings semibold with tight negative tracking.
+- Shell: sticky top header (brand + version) with a tab row underneath; footer holds privacy note, detector status dot and the theme switcher. No sidebar.
+- Primary buttons are solid `--button-bg` (black in light, white in dark); secondary are outlined; ghost for low-emphasis actions.
+- Don't copy Vercel branding (logo, name, exact product copy); take the language, not the identity.
+- Illustrations are inline SVG in `components/illustrations/`, drawn with `currentColor` and the scene tokens so they follow the theme, and always `aria-hidden`. No raster images or external image hosts (CSP allows only same-origin).
+- Motion: animate only `transform`/`opacity` (plus `stroke-dashoffset` for line drawing), ease-out, ≤ 800ms for UI (ambient hero loops may be longer). Put every animation inside `@media (prefers-reduced-motion: no-preference)`; the static design must be complete without it. Animated numbers (`useCountUp`) are `aria-hidden` with the final value in visually-hidden text.
+
+### 6.3 Page contract
 Navigation is grouped by goal: **Send** (Pre-flight check, Hide) → **Receive** (Reveal) → **Analyse** (Detect) → **Set up** (Keys). Each page has:
-- A `PageHeader` (one `h1` + one sentence saying what the page does; it also sets `document.title`).
+- A `PageHeader` band (mono eyebrow, one `h1`, one sentence; it also sets `document.title`), then content inside `PageBody` (`isNarrow` for forms: 800px, same left edge as the title).
+- Sections are `Card`s: optional mono `step` label, title, description, body, and a grey footer bar for hints, counters and the card's action.
 - **One primary action** (`<Button variant="primary">`); everything else is secondary or ghost.
 - Inputs above, results below, in the order the user acts. Multi-step forms use numbered `card` sections.
 - All five states designed and implemented:
@@ -145,18 +156,18 @@ Navigation is grouped by goal: **Send** (Pre-flight check, Hide) → **Receive**
 | Error | `ErrorAlert` (titled by error `code`, server message, recovery tips). Never a stack trace. |
 | Not ready | e.g. detector not installed: `Alert tone="info"` saying what is unavailable and why |
 
-### 6.3 Content and copy
+### 6.4 Content and copy
 - Every API error `code` maps to a human title in `ErrorAlert`; the server's `message` says what to do.
 - Validate in the browser first (types, sizes, required fields, password confirmation) and show field errors next to the field; the server re-validates everything.
 - Numbers carry units and sensible precision via `lib/format.ts`: "12.2 KB", "18%", "64 × 64 px".
 - Warn before risky actions: JPEG covers, sequential layout, downloading a private key, sending the result as a photo.
 
-### 6.4 Secrets in the UI
+### 6.5 Secrets in the UI
 - Passwords and passphrases use `PasswordInput` (masked, with a show/hide toggle and correct `autoComplete`).
 - Secrets live only in component state; a saved recipient *public* key may live in `AppState` (memory) for the session. Nothing secret in browser storage.
 - Private-key downloads carry the warning "Anyone with this file can read messages sent to you." Offer "Clear from screen" for keys and revealed messages.
 
-### 6.5 Accessibility (required, enforced by `eslint-plugin-jsx-a11y` strict)
+### 6.6 Accessibility (required, enforced by `eslint-plugin-jsx-a11y` strict)
 - **Never use colour alone.** Status uses `StatusBadge`: icon + words + number (`Low risk · 18%`).
 - Text contrast ≥ 4.5:1 in both themes; only use colour tokens from `styles.css`, which are checked for both.
 - Every control has a visible `<label>`; hints and errors are linked with `aria-describedby` (use `Field`). Radio choices use `ChoiceGroup` (native radios in a `fieldset`/`legend`).
@@ -165,7 +176,7 @@ Navigation is grouped by goal: **Send** (Pre-flight check, Hide) → **Receive**
 - Results and errors are announced (`role="status"` / `role="alert"`). Scrollable regions are focusable with a label.
 - Respect `prefers-reduced-motion`; no autoplaying animation.
 
-### 6.6 Design workflow
+### 6.7 Design workflow
 ```
 Exploring layout or flow?        → text/ASCII wireframe in chat, agree before coding
 Flow across pages?               → Mermaid diagram (docs/ or chat)

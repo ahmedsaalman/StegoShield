@@ -37,7 +37,7 @@ interface IconProps {
   className?: string;
 }
 
-export function Icon({ name, size = 20, className }: IconProps) {
+export function Icon({ name, size = 16, className }: IconProps) {
   return (
     <svg
       className={className ? `icon ${className}` : "icon"}
@@ -46,7 +46,7 @@ export function Icon({ name, size = 20, className }: IconProps) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

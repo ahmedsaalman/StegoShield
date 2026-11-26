@@ -65,8 +65,8 @@ describe("HidePage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.upload(screen.getByLabelText(/Choose an image/), new File(["png"], "holiday.png", { type: "image/png" }));
-    await screen.findByText("1.5 KB");
+    await user.upload(screen.getByLabelText(/Drop an image/), new File(["png"], "holiday.png", { type: "image/png" }));
+    await screen.findByText("Holds up to 1.5 KB");
     await user.type(screen.getByLabelText("Secret message"), "meet at noon");
     await user.type(screen.getByLabelText("Password"), "correct horse battery");
     await user.type(screen.getByLabelText("Confirm password"), "correct horse battery");

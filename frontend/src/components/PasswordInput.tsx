@@ -34,7 +34,7 @@ export function PasswordInput({ id, value, onChange, describedBy, isInvalid = fa
         aria-pressed={isVisible}
         aria-label={isVisible ? "Hide password" : "Show password"}
       >
-        <Icon name={isVisible ? "eyeOff" : "eye"} size={18} />
+        <Icon name={isVisible ? "eyeOff" : "eye"} />
       </button>
     </div>
   );

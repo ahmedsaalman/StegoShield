@@ -12,7 +12,7 @@ interface StatusBadgeProps {
 export function StatusBadge({ status, value, size = "md" }: StatusBadgeProps) {
   return (
     <span className={`status-badge status-badge--${status.tone} status-badge--${size}`}>
-      <Icon name={status.icon} size={size === "lg" ? 22 : 16} />
+      <Icon name={status.icon} size={size === "lg" ? 16 : 14} />
       <span>{status.label}</span>
       {value && (
         <>
