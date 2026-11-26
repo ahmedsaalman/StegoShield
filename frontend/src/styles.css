@@ -2099,6 +2099,116 @@ pre,
   font-weight: 600;
 }
 
+/* ---------- Lab: your image × sample messages ---------- */
+
+.message-box--compact {
+  max-height: 220px;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.message-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.message-layout figure,
+.exposure figure {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.message-layout figcaption,
+.exposure figcaption {
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+
+.exposure {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.exposure__frame {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+}
+
+.exposure__frame img {
+  width: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.exposure__zoom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  max-width: 400px;
+}
+
+.exposure__zoom .image-frame {
+  aspect-ratio: 1;
+}
+
+.exposure__zoom img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: var(--space-2);
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.legend-swatch:first-child {
+  margin-left: 0;
+}
+
+/* Fixed colours: they must match the highlight colours drawn into the images by the server. */
+.legend-swatch--cyan {
+  background: #00e5ff;
+}
+
+.legend-swatch--red {
+  background: #ff3b30;
+}
+
+.legend-swatch--yellow {
+  background: #ffd60a;
+}
+
+.why {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 75ch;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.why p,
+.why .subsection-title {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .message-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ---------- Image activity overlays ---------- */
 
 .image-frame--overlay,

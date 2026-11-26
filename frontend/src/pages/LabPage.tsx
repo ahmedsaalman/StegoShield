@@ -25,6 +25,7 @@ import { LAB_OUTCOME_PRESENTATION, RISK_PRESENTATION } from "../lib/presentation
 import { COVER_ACCEPT, useCoverImage } from "../lib/useCoverImage";
 import { type Request, type RequestState, useRequest } from "../lib/useRequest";
 import { useAppState } from "../state/AppState";
+import { LabMessageRun } from "./LabMessageRun";
 import { LabSampleRun } from "./LabSampleRun";
 
 /** Each demo processes the image many times, so the API caps Lab uploads at 1 MP. */
@@ -191,6 +192,12 @@ export function LabPage() {
               {(data) => <DetectorResult data={data} />}
             </DemoCard>
           </div>
+          <LabMessageRun
+            file={image.file}
+            imageSize={capacity ? { width: capacity.width, height: capacity.height } : null}
+            canRun={canRun}
+            isDetectorMissing={isDetectorMissing}
+          />
         </div>
       </PageBody>
     </>

@@ -235,6 +235,63 @@ export interface LabSampleRun {
   results: SampleAlgorithmResult[];
 }
 
+// --- Evaluation Lab: sample messages in the user's image ---
+
+export interface LabSampleText {
+  id: string;
+  title: string;
+  description: string;
+  size_bytes: number;
+  text: string;
+}
+
+export interface MessageCheck {
+  check: "right_key" | "wrong_key" | "bit_flips" | "jpeg_q90" | "resize_50";
+  label: string;
+  expected: LabOutcome;
+  outcome: LabOutcome;
+}
+
+export interface PixelBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface MessageAlgorithmResult {
+  algorithm: EmbeddingAlgorithm;
+  predicted_probability: number;
+  predicted_level: RiskLevel;
+  actual_probability: number;
+  is_detected: boolean;
+  psnr_db: number | null;
+  ssim: number;
+  changed_values: number;
+  changed_pixels: number;
+  flat_area_share: number;
+  flat_change_share: number;
+  hotspot: PixelBox | null;
+  checks: MessageCheck[];
+  top_signals: { feature: string; z_score: number }[];
+  overview_image: string;
+  hotspot_original: string | null;
+  hotspot_stego: string | null;
+}
+
+export interface LabMessageRun {
+  text_id: string;
+  title: string;
+  message_bytes: number;
+  capacity_bytes: number;
+  fits: boolean;
+  payload_percent: number;
+  threshold: number;
+  image_width: number;
+  image_height: number;
+  results: MessageAlgorithmResult[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -280,6 +337,11 @@ export const api = {
   labResults: (signal?: AbortSignal) => getJson<LabResults>("/lab/results", signal),
 
   labSamples: (signal?: AbortSignal) => getJson<LabSamples>("/lab/samples", signal),
+
+  labTexts: (signal?: AbortSignal) => getJson<{ texts: LabSampleText[] }>("/lab/messages", signal),
+
+  labRunMessage: (textId: string, image: File, signal?: AbortSignal) =>
+    postFormJson<LabMessageRun>(`/lab/messages/${encodeURIComponent(textId)}/run`, { image }, signal),
 
   labRunSample: (sampleId: string, payloadPercent: number, signal?: AbortSignal) =>
     postJson<LabSampleRun>(

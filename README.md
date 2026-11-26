@@ -169,6 +169,8 @@ All endpoints live under `/api`; interactive documentation is at `/api/docs`. Up
 | GET | `/api/lab/samples` | Evaluation Lab: the 8 built-in sample photos (held-out DIV2K crops in `api/samples/`) |
 | GET | `/api/lab/samples/{id}/image` | Evaluation Lab: one sample photo (PNG) |
 | POST | `/api/lab/samples/{id}/run` | Evaluation Lab live sample run: hide `payload_percent` (1–50) of the sample with both algorithms; pre-flight prediction vs detector result, PSNR/SSIM, changed values, previews |
+| GET | `/api/lab/messages` | Evaluation Lab: the 6 built-in sample messages (75 B to 40 KB), full text included |
+| POST | `/api/lab/messages/{id}/run` | Evaluation Lab: hide one sample message in the uploaded image with both algorithms; detection, quality, 5 safety checks, and an exposure map highlighting the changed pixels and the most exposed flat spot |
 
 Every error has the same shape: `{"error": {"code", "message", "field?", "request_id"}}`. A wrong key, a modified image and "no message" all return the same `no_message_found` error on purpose.
 

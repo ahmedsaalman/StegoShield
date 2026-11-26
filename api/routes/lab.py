@@ -12,16 +12,19 @@ from api.config import Settings
 from api.dependencies import get_analysis, get_settings, run_cpu_bound
 from api.images import load_cover_image
 from api.lab import lab_attacks, lab_detector_comparison, lab_quality, lab_results, lab_robustness
+from api.lab_messages import list_texts, run_message
 from api.lab_samples import find_sample, list_samples, run_sample
 from api.schemas import (
     LabAttacksResponse,
     LabDetectorComparisonResponse,
+    LabMessageRunResponse,
     LabQualityResponse,
     LabResultsResponse,
     LabRobustnessResponse,
     LabSampleRunRequest,
     LabSampleRunResponse,
     LabSamplesResponse,
+    LabSampleTextsResponse,
 )
 
 router = APIRouter(prefix="/api/lab", tags=["evaluation lab"])
@@ -95,3 +98,22 @@ async def run_built_in_sample(
 ) -> LabSampleRunResponse:
     """Hide a payload share in one sample with each algorithm: predicted vs actual risk, quality, changes."""
     return await run_cpu_bound(request, run_sample, sample_id, body.payload_percent, analysis.detector)
+
+
+@router.get("/messages", response_model=LabSampleTextsResponse)
+async def built_in_messages() -> LabSampleTextsResponse:
+    """The built-in sample messages, from a one-line note to a long dossier."""
+    return list_texts()
+
+
+@router.post("/messages/{text_id}/run", response_model=LabMessageRunResponse)
+async def run_built_in_message(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    analysis: Annotated[AnalysisService, Depends(get_analysis)],
+    text_id: str,
+    image: LabImage,
+) -> LabMessageRunResponse:
+    """Hide one sample message in the uploaded image with each algorithm and show what it is exposed to."""
+    uploaded = await load_cover_image(image, settings)
+    return await run_cpu_bound(request, run_message, uploaded.image, text_id, analysis.detector)

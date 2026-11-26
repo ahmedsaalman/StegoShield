@@ -14,12 +14,27 @@ The back end for the Phase 6 Evaluation Lab page is done (`api/routes/lab.py`, `
 | GET | `/api/lab/samples` | none | instant | no |
 | GET | `/api/lab/samples/{id}/image` | none | instant | no |
 | POST | `/api/lab/samples/{id}/run` | JSON `{"payload_percent": 1–50}` | ~1.5–2 s per sample | **yes** (503 otherwise) |
+| GET | `/api/lab/messages` | none | instant | no |
+| POST | `/api/lab/messages/{id}/run` | `multipart/form-data`, field `image` | ~1–2 s per message (512 px image) | **yes** (503 otherwise) |
 
 ### Live sample run
 
 The 8 built-in samples are 512×512 crops of DIV2K photos from the detector's **held-out** split (`api/samples/`, listed in `manifest.json` with their source cover id; `tests/test_lab_samples.py` checks they are held out). They are ordered smooth → textured (3 smooth, 3 medium, 2 textured by the held-out set's own thirds). DIV2K is licensed for academic research.
 
 For one sample and one payload share, `run` returns, for **each algorithm**: the pre-flight prediction for that size (`PreflightChecker.predict_risk`), the detector's score on a **real** format-v2 stego image (public-key mode, fresh keys, seeded message bytes), PSNR/SSIM, the number and share of changed colour values, a 256 px JPEG preview of the stego image and a PNG map of the **centre 128×128 pixels at full resolution** (one dot = one changed value, coloured by channel). Fresh keys mean detector scores vary by a few points between runs; photos near the 72 % threshold can flip. The page runs the samples two at a time and updates as each one finishes (~10 s for all 8).
+
+### Your image × sample messages
+
+Six built-in texts (`api/sample_texts.py`, fictional and original): a one-line note (75 B), a chat excerpt (385 B), an email (1,001 B), a three-page letter (3,751 B), a field report (12,620 B) and a long dossier (40,196 B). `GET /api/lab/messages` returns them with the full text so the page can show exactly what gets hidden.
+
+`POST /api/lab/messages/{id}/run` hides that text in the **uploaded** image (public-key mode, fresh keys) with each algorithm. If it doesn't fit, the response has `fits: false`, the capacity, and no results. Otherwise, for each algorithm it returns:
+
+- the pre-flight prediction and the detector's real score, PSNR/SSIM, and changed values and pixels;
+- five **safety checks** on the stego image: reveal with the right key (expected: recovered), with another private key, after flipping half of the lowest bits, after a JPEG q90 re-save, and after a 50 % resize (all expected: failed safely);
+- an **exposure map**. The image is split into 16 px blocks scored by texture (mean absolute Laplacian of luminance), and the flattest third is marked. It reports the share of changes that landed there, and boxes the 64 px **hotspot** around the flat block with the most changes. `overview_image` is a ≤448 px JPEG: the image dimmed to grey, flat blocks tinted red, changed pixels cyan, hotspot boxed in yellow. `hotspot_original` and `hotspot_stego` are full-resolution PNG crops, before and after, with changed pixels in cyan;
+- the detector's top three `top_signals` (feature and z-score against clean photos). The page names only those at least 1σ out.
+
+The detector scores the whole image, so the map shows *where the evidence sits*, not a per-region verdict. Embedding scatters bits uniformly, so about a third of the changes land in the flattest third; adaptive embedding that avoids flat areas is future work.
 
 Uploads go through the same `load_cover_image` as `/api/detect` (PNG, JPEG, BMP, WebP; general size limits), plus a Lab-only cap of **1,048,576 pixels** (e.g. 1024×1024), because each demo processes the image many times.
 
@@ -60,6 +75,7 @@ Rates and probabilities are 0–1: format probabilities with `formatProbability`
 | `detector_unavailable` | 503 | detector comparison without a model | existing title; show as the "not ready" state for that demo only |
 | `lab_results_unavailable` | 503 | `/api/lab/results` when the result CSVs are missing | **new code**: add a title in `ErrorAlert.tsx`, e.g. "Saved results not available" |
 | `unknown_sample` | 404 | a sample id not in the manifest | the page only uses ids from `/api/lab/samples` |
+| `unknown_text` | 404 | a text id not in `api/sample_texts.py` | the page only uses ids from `/api/lab/messages` |
 | `invalid_image`, `unsupported_format`, `validation_error` | 4xx | as for `/api/detect` | existing |
 
 ## What each demo should convey (copy hints)

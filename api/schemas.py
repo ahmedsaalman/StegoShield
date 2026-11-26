@@ -283,3 +283,73 @@ class LabSampleRunResponse(BaseModel):
 
 
 # --- Evaluation Lab: sample messages in the user's image ---------------------------------------------
+
+
+class LabSampleText(BaseModel):
+    id: str
+    title: str
+    description: str
+    size_bytes: int
+    text: str
+
+
+class LabSampleTextsResponse(BaseModel):
+    texts: list[LabSampleText]
+
+
+class MessageCheck(BaseModel):
+    check: str = Field(description="right_key, wrong_key, bit_flips, jpeg_q90 or resize_50.")
+    label: str
+    expected: LabOutcome
+    outcome: LabOutcome
+
+
+class PixelBox(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class SignalFeature(BaseModel):
+    feature: str
+    z_score: float
+
+
+class MessageAlgorithmResult(BaseModel):
+    algorithm: EmbeddingAlgorithmChoice
+    predicted_probability: float = Field(ge=0.0, le=1.0)
+    predicted_level: RiskLevel
+    actual_probability: float = Field(ge=0.0, le=1.0)
+    is_detected: bool
+    psnr_db: float | None
+    ssim: float = Field(ge=-1.0, le=1.0)
+    changed_values: int
+    changed_pixels: int
+    flat_area_share: float = Field(ge=0.0, le=1.0, description="Share of the image in its flattest third of blocks.")
+    flat_change_share: float = Field(
+        ge=0.0, le=1.0, description="Share of changed pixels that fell in those flat blocks."
+    )
+    hotspot: PixelBox | None = Field(
+        description="Flat area that received the most changes (original pixel coordinates)."
+    )
+    checks: list[MessageCheck]
+    top_signals: list[SignalFeature]
+    overview_image: str = Field(
+        description="data: URL: dimmed image, changed pixels cyan, flat blocks red, hotspot box."
+    )
+    hotspot_original: str | None = Field(description="data: URL: the hotspot area of the original, full resolution.")
+    hotspot_stego: str | None = Field(description="data: URL: the same area with changed pixels highlighted.")
+
+
+class LabMessageRunResponse(BaseModel):
+    text_id: str
+    title: str
+    message_bytes: int
+    capacity_bytes: int
+    fits: bool
+    payload_percent: float
+    threshold: float
+    image_width: int
+    image_height: int
+    results: list[MessageAlgorithmResult]
