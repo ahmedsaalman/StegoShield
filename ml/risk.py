@@ -19,7 +19,7 @@ from PIL import Image
 from sklearn.ensemble import RandomForestRegressor
 
 from core.capacity import calculate_image_capacity, compute_payload_ratio
-from ml.features import FEATURE_NAMES, extract_features
+from ml.features import FEATURE_NAMES, channel_means, extract_features
 
 DEFAULT_RISK_MODEL_PATH = Path("models/risk_model.joblib")
 
@@ -123,7 +123,8 @@ class PreFlightRiskScorer:
         total_slots = capacity["total_carrier_bits"]
         payload_ratio = compute_payload_ratio(target_payload_bytes, total_slots) if target_payload_bytes > 0 else 0.0
 
-        vec, feat_dict = extract_features(image)
+        vec, channel_feats = extract_features(image)
+        feat_dict = channel_means(channel_feats)  # heuristics read channel-averaged values
 
         if self.model is not None and not self.is_heuristic:
             # Predict with trained regressor

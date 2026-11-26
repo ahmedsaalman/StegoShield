@@ -47,6 +47,8 @@ data/raw/
 data/processed/
 data/stego/
 data/splits/
+data/covers/
+data/features/
 *.npy
 *.npz
 

@@ -86,3 +86,11 @@ ruff check .
 ```bash
 streamlit run app.py
 ```
+
+### 6. Build the Detector Dataset
+```bash
+python -m ml.prepare_covers   # downloads DIV2K validation set if missing, cuts 500 covers (5 per photo) into data/covers/
+python -m ml.dataset          # 500 clean + 8,000 stego rows -> data/features/features.csv (~10 min on 7 cores)
+```
+Both scripts take `--seed` (default 2026); the same seed gives a byte-identical CSV. Data folders are git-ignored.
+

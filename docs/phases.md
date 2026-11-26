@@ -23,7 +23,7 @@ This is the authoritative definition of the development phases. Scope comes from
 |---|---|---|---|---|---|
 | 0 | Setup & hygiene | all | none | ½ day | ✅ |
 | 1 | Secure format v2 | A, C | 0 | 1 day | ✅ |
-| 2 | Dataset | D | 0 | ½–1 day | ⬜ |
+| 2 | Dataset | D | 0 | ½–1 day | ✅ |
 | 3 | Detector | D | 2 | 1 day | ⬜ |
 | 4 | Pre-flight check | B | 1, 3 | ½ day | ⬜ |
 | 5 | Experiments | all | 1, 3, 4 | 1 day | ⬜ |
@@ -131,26 +131,26 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 ---
 
-## Phase 2: Dataset ⬜
+## Phase 2: Dataset ✅
 
 **Goal:** A labelled, reproducible feature table built from real photographs, ready for training without leakage.
 
 **Depends on:** 0
 
 **Tasks:**
-- [ ] `ml/prepare_covers.py`: download DIV2K and cut about 500 512×512 PNG crops into `data/covers/` (one crop per source image, fixed seed).
-- [ ] Add `data/covers/` and `data/features/` to `.gitignore`.
-- [ ] Change `ml/features.py` to compute every feature per channel (R, G, B) instead of on grayscale. Keep `FEATURE_NAMES` as the single source of feature order.
-- [ ] Generate stego variants: covers × {5, 10, 25, 50 %} × {sequential, pseudorandom} × {replacement, matching}, using format v2 if Phase 1 is done (or random payload bytes otherwise).
-- [ ] Write `data/features/features.csv` with columns `cover_id, label, ratio, layout, algorithm, <features…>`.
+- [x] `ml/prepare_covers.py`: download DIV2K (validation set, 100 photos) and cut 5 512×512 PNG crops per photo into `data/covers/` (500 covers, fixed seed). *Changed from "one crop per source image": the 100-photo set was chosen over the 3.5 GB training set because of download speed.*
+- [x] Add `data/covers/` and `data/features/` to `.gitignore`.
+- [x] Change `ml/features.py` to compute every feature per channel (R, G, B) instead of on grayscale. Keep `FEATURE_NAMES` as the single source of feature order.
+- [x] Generate stego variants: covers × {5, 10, 25, 50 %} × {sequential, pseudorandom} × {replacement, matching}. *Uses seeded random payload bytes, not live v2 messages: v2 draws salt/nonce/keys from `os.urandom`, which would break reproducibility. The embedded bits are statistically the same (see `ml/dataset.py` docstring).*
+- [x] Write `data/features/features.csv` with columns `cover_id, source_id, label, ratio, layout, algorithm, seed, <features…>`. `source_id` is the photo a crop came from.
 
 **Deliverables:** `ml/prepare_covers.py`, updated `ml/features.py` and `ml/dataset.py`, generation command in `README.md`
 
 **Exit criteria:**
-- [ ] The CSV has 500 cover rows + 500 × 16 stego rows (8,500 total), with no NaN or inf.
-- [ ] Every row has a `cover_id`, so the split in Phase 3 can be done by cover.
-- [ ] Running the script twice with the same seed gives byte-identical CSVs.
-- [ ] Unit test: feature vector length == `len(FEATURE_NAMES)` for RGB input.
+- [x] The CSV has 500 cover rows + 500 × 16 stego rows (8,500 total), with no NaN or inf.
+- [x] Every row has a `cover_id` and `source_id`, so the split in Phase 3 can be done by source photo.
+- [x] Running the script twice with the same seed gives byte-identical CSVs. *(Verified on the first 50 covers: SHA-256 of header + 850 rows matches the full run. A slow unit test also checks that parallel and single-worker output match.)*
+- [x] Unit test: feature vector length == `len(FEATURE_NAMES)` for RGB input.
 
 **Not in this phase:** model training, synthetic covers (kept only for unit tests).
 
@@ -163,7 +163,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 **Depends on:** 2
 
 **Tasks:**
-- [ ] `ml/train_detector.py`: split by `cover_id` (`GroupShuffleSplit`, 80/20, fixed seed), so no cover appears in both train and test.
+- [ ] `ml/train_detector.py`: split by `source_id` (`GroupShuffleSplit`, 80/20, fixed seed), so no photo (and none of its 5 crops) appears in both train and test.
 - [ ] Balance classes (class weights, or sample one stego variant per cover per epoch; document which).
 - [ ] Random Forest → `CalibratedClassifierCV` (isotonic or sigmoid, chosen on validation folds).
 - [ ] Save the artifact as a dict: `{model, feature_names, format_version, trained_at, seed}`. The loader rejects artifacts whose `feature_names` differ from the current `FEATURE_NAMES`.
@@ -173,7 +173,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 **Deliverables:** `ml/train_detector.py`, `models/detector.joblib`, `models/detector_metrics.json`, updated `ml/detector.py`
 
 **Exit criteria:**
-- [ ] Test: train and test `cover_id` sets are disjoint.
+- [ ] Test: train and test `source_id` sets (and therefore `cover_id` sets) are disjoint.
 - [ ] Test-set ROC-AUC is reported for every slice in the metrics JSON.
 - [ ] Sanity check: ROC-AUC ≥ 0.90 for 50 % sequential replacement. If it is lower, features or labels are broken, so investigate before moving on.
 - [ ] Loading a model with mismatched feature names raises a clear error.

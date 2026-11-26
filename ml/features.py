@@ -1,6 +1,10 @@
-r"""StegoShield Steganalysis Feature Extraction Engine (Task L16).
+r"""StegoShield steganalysis feature extraction.
 
-Extracts rich statistical features from cover and stego images:
+Every feature is computed separately on the R, G and B channels, because the
+message bits are embedded in each channel's least significant bit. Mixing the
+channels into grayscale first would blur that signal.
+
+Feature families (per channel):
 1. LSB-Plane Statistics (bit-plane mean, variance, horizontal/vertical autocorrelation).
 2. Chi-Square ($\chi^2$) Attack Statistics (PoV histogram asymmetry and p-values).
 3. First-Order Difference Residuals (horizontal, vertical, diagonal gradients).
@@ -18,7 +22,9 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage, stats
 
-FEATURE_NAMES = [
+CHANNELS = ("r", "g", "b")
+
+CHANNEL_FEATURE_NAMES = [
     # LSB Bit-Plane Statistics
     "lsb_mean",
     "lsb_variance",
@@ -53,14 +59,8 @@ FEATURE_NAMES = [
     "img_histogram_entropy",
 ]
 
-
-def _to_grayscale_array(image: Image.Image) -> np.ndarray:
-    """Convert PIL image to 2D uint8 numpy array."""
-    if image.mode != "L":
-        gray = image.convert("L")
-    else:
-        gray = image
-    return np.array(gray, dtype=np.uint8)
+# Single source of truth for feature order: "<feature>_<channel>", grouped by channel.
+FEATURE_NAMES = [f"{name}_{channel}" for channel in CHANNELS for name in CHANNEL_FEATURE_NAMES]
 
 
 def extract_lsb_features(gray: np.ndarray) -> dict[str, float]:
@@ -224,20 +224,41 @@ def extract_complexity_features(gray: np.ndarray) -> dict[str, float]:
 
 
 def extract_features(image: Image.Image) -> tuple[np.ndarray, dict[str, float]]:
-    """Extract all 27 steganalysis and risk features from an image.
+    """Extract all per-channel features from an image.
 
     Returns:
-        tuple[np.ndarray, dict[str, float]]: (feature_vector_1d, feature_dict)
+        (vector ordered as FEATURE_NAMES, dict keyed by FEATURE_NAMES)
     """
-    gray = _to_grayscale_array(image)
-
     feat_dict: dict[str, float] = {}
-    feat_dict.update(extract_lsb_features(gray))
-    feat_dict.update(extract_chi_square_features(gray))
-    feat_dict.update(extract_residual_features(gray))
-    feat_dict.update(extract_cooccurrence_features(gray))
-    feat_dict.update(extract_complexity_features(gray))
-
-    # Build ordered vector
-    vec = np.array([feat_dict[k] for k in FEATURE_NAMES], dtype=np.float64)
+    for channel, plane in zip(CHANNELS, _channel_planes(image), strict=True):
+        for name, value in extract_channel_features(plane).items():
+            feat_dict[f"{name}_{channel}"] = value
+    vec = np.array([feat_dict[name] for name in FEATURE_NAMES], dtype=np.float64)
     return vec, feat_dict
+
+
+def extract_channel_features(plane: np.ndarray) -> dict[str, float]:
+    """All CHANNEL_FEATURE_NAMES for one 2D uint8 channel."""
+    features: dict[str, float] = {}
+    features.update(extract_lsb_features(plane))
+    features.update(extract_chi_square_features(plane))
+    features.update(extract_residual_features(plane))
+    features.update(extract_cooccurrence_features(plane))
+    features.update(extract_complexity_features(plane))
+    return features
+
+
+def channel_means(feat_dict: dict[str, float]) -> dict[str, float]:
+    """Average each feature over R, G and B, keyed by CHANNEL_FEATURE_NAMES (for display and summaries)."""
+    return {
+        name: float(np.mean([feat_dict[f"{name}_{channel}"] for channel in CHANNELS])) for name in CHANNEL_FEATURE_NAMES
+    }
+
+
+def _channel_planes(image: Image.Image) -> list[np.ndarray]:
+    """R, G, B planes as 2D uint8 arrays. Alpha is dropped; grayscale is used for all three."""
+    if image.mode == "L":
+        gray = np.array(image, dtype=np.uint8)
+        return [gray, gray, gray]
+    rgb = np.array(image.convert("RGB"), dtype=np.uint8)
+    return [rgb[:, :, i] for i in range(3)]
