@@ -6,10 +6,9 @@ based on image dimensions and channel configurations.
 
 from __future__ import annotations
 
-from typing import Tuple, Dict, Any
-from PIL import Image
-import numpy as np
+from typing import Any
 
+from PIL import Image
 
 # Recommended safe payload ratios based on steganographic literature
 SAFE_PAYLOAD_RATIO: float = 0.10      # <= 10% carrier capacity: low detectability risk
@@ -24,7 +23,7 @@ class CapacityExceededError(ValueError):
 
 def get_embeddable_channels(image: Image.Image) -> int:
     """Return number of channels used for embedding.
-    
+
     For RGB: 3 channels (R, G, B).
     For RGBA: 3 channels (R, G, B), preserving Alpha for transparency fidelity.
     For L (Grayscale): 1 channel.
@@ -41,7 +40,7 @@ def get_embeddable_channels(image: Image.Image) -> int:
 
 def calculate_image_capacity(image: Image.Image) -> dict[str, Any]:
     """Calculate the maximum and recommended payload capacity for an image.
-    
+
     Returns:
         dict: Detailed capacity metrics including dimensions, max bytes, and safe limits.
     """
@@ -78,7 +77,7 @@ def compute_payload_ratio(payload_bytes: int, total_carrier_bits: int) -> float:
 
 def check_capacity(image: Image.Image, payload_length_bytes: int) -> None:
     """Verify that the carrier image has enough capacity for the payload.
-    
+
     Raises:
         CapacityExceededError: If payload cannot fit in the image carrier.
     """

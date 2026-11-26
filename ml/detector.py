@@ -11,14 +11,14 @@ Provides:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
-from PIL import Image
-import numpy as np
+from typing import Any
+
 import joblib
+import numpy as np
+from PIL import Image
 from sklearn.ensemble import RandomForestClassifier
 
-from ml.features import extract_features, FEATURE_NAMES
-
+from ml.features import FEATURE_NAMES, extract_features
 
 DEFAULT_DETECTOR_PATH = Path("models/detector.joblib")
 
@@ -27,7 +27,7 @@ class StegoDetector:
     """Defensive Steganalysis AI Detector."""
 
     def __init__(self, model_path: Path | str | None = None):
-        self.model: Optional[RandomForestClassifier] = None
+        self.model: RandomForestClassifier | None = None
         self.model_path = Path(model_path) if model_path else DEFAULT_DETECTOR_PATH
         self.is_heuristic = False
 
@@ -74,7 +74,7 @@ class StegoDetector:
 
     def _heuristic_predict(self, feat_dict: dict[str, float]) -> float:
         """Rule-based statistical heuristic when no ML model is yet loaded.
-        
+
         Evaluates Chi-Square p-value, LSB transition rate, and horizontal difference kurtosis.
         """
         score = 0.0
@@ -107,7 +107,7 @@ class StegoDetector:
 
     def predict_probability(self, image: Image.Image) -> tuple[float, dict[str, float]]:
         """Compute the probability [0.0, 1.0] that the image contains hidden data.
-        
+
         Returns:
             tuple[float, dict[str, float]]: (stego_probability, extracted_features)
         """
@@ -167,7 +167,11 @@ class StegoDetector:
             "confidence": confidence,
             "badge": risk_badge,
             "threshold": threshold,
-            "model_type": "Trained Random Forest" if (self.model and not self.is_heuristic) else "Statistical Heuristic Baseline",
+            "model_type": (
+                "Trained Random Forest"
+                if (self.model and not self.is_heuristic)
+                else "Statistical Heuristic Baseline"
+            ),
             "features": feat_dict,
             "anomalies": anomalies,
         }

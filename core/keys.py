@@ -6,7 +6,6 @@ Helpers for X25519 keypair generation, PEM/Base64/Hex export, and robust import.
 from __future__ import annotations
 
 import base64
-from typing import Tuple, Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519

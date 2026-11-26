@@ -14,11 +14,9 @@ Used jointly by:
 
 from __future__ import annotations
 
-from typing import Dict, Any, Tuple
-from PIL import Image
 import numpy as np
-from scipy import stats, ndimage
-
+from PIL import Image
+from scipy import ndimage, stats
 
 FEATURE_NAMES = [
     # LSB Bit-Plane Statistics
@@ -227,7 +225,7 @@ def extract_complexity_features(gray: np.ndarray) -> dict[str, float]:
 
 def extract_features(image: Image.Image) -> tuple[np.ndarray, dict[str, float]]:
     """Extract all 27 steganalysis and risk features from an image.
-    
+
     Returns:
         tuple[np.ndarray, dict[str, float]]: (feature_vector_1d, feature_dict)
     """

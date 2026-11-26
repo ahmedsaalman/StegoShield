@@ -1,0 +1,24 @@
+[project]
+name = "stegoshield"
+version = "0.2.0"
+description = "Encrypted LSB steganography with a pre-flight risk check and an ML steganalysis detector"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "data", "models", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Long UI strings; app.py is rewritten in Phase 6, remove this then.
+"app.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: long-running tests, excluded by default (run with: pytest -m slow)",
+]

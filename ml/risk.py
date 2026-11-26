@@ -11,15 +11,15 @@ Evaluates candidate cover images before embedding data:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
-from PIL import Image
-import numpy as np
+from typing import Any
+
 import joblib
+import numpy as np
+from PIL import Image
 from sklearn.ensemble import RandomForestRegressor
 
 from core.capacity import calculate_image_capacity, compute_payload_ratio
-from ml.features import extract_features, FEATURE_NAMES
-
+from ml.features import FEATURE_NAMES, extract_features
 
 DEFAULT_RISK_MODEL_PATH = Path("models/risk_model.joblib")
 
@@ -28,7 +28,7 @@ class PreFlightRiskScorer:
     """Evaluates cover image detectability risk before steganographic embedding."""
 
     def __init__(self, model_path: Path | str | None = None):
-        self.model: Optional[RandomForestRegressor] = None
+        self.model: RandomForestRegressor | None = None
         self.model_path = Path(model_path) if model_path else DEFAULT_RISK_MODEL_PATH
         self.is_heuristic = False
 
@@ -74,7 +74,7 @@ class PreFlightRiskScorer:
 
     def _heuristic_risk(self, feat_dict: dict[str, float], payload_ratio: float) -> float:
         """Multi-factor texture complexity & capacity model.
-        
+
         Natural images with high edge density and variance absorb LSB changes smoothly.
         Smooth, flat images (e.g. clear sky, synthetic gradients) exhibit high detectability.
         """
@@ -111,11 +111,11 @@ class PreFlightRiskScorer:
         target_payload_bytes: int = 0,
     ) -> dict[str, Any]:
         """Perform comprehensive pre-flight cover image risk audit.
-        
+
         Args:
             image: Candidate carrier PIL image.
             target_payload_bytes: Planned payload size in bytes (0 for general audit).
-            
+
         Returns:
             dict: Risk metrics, Low/Medium/High classification, gauge color, and recommendations.
         """
@@ -179,7 +179,11 @@ class PreFlightRiskScorer:
             "capacity": capacity,
             "target_payload_bytes": target_payload_bytes,
             "payload_ratio_percent": f"{payload_ratio * 100:.2f}%" if target_payload_bytes > 0 else "N/A",
-            "model_type": "Trained Regressor (.joblib)" if (self.model and not self.is_heuristic) else "Multi-Factor Complexity Engine",
+            "model_type": (
+                "Trained Regressor (.joblib)"
+                if (self.model and not self.is_heuristic)
+                else "Multi-Factor Complexity Engine"
+            ),
             "features": {
                 "laplacian_variance": f"{feat_dict.get('img_laplacian_var', 0):.1f}",
                 "edge_energy": f"{feat_dict.get('img_sobel_edge_energy', 0):.2f}",

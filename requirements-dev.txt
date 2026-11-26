@@ -1,0 +1,4 @@
+# Development tools: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.2.0
+ruff==0.15.4

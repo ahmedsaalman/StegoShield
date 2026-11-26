@@ -12,22 +12,23 @@ Generates paired clean and stego image datasets for ML steganalysis training:
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
-from PIL import Image
+from typing import Any
+
 import numpy as np
 import pandas as pd
+from PIL import Image
 
 from core.capacity import calculate_image_capacity
-from core.embed import embed_payload, EmbeddingMode, EmbeddingAlgorithm
-from ml.features import extract_features, FEATURE_NAMES
-
+from core.embed import EmbeddingAlgorithm, EmbeddingMode, embed_payload
+from ml.features import FEATURE_NAMES, extract_features
 
 DEFAULT_PAYLOAD_RATIOS = [0.05, 0.10, 0.25, 0.50]
 
 
-def generate_synthetic_covers(output_dir: Path | str, count: int = 10, size: Tuple[int, int] = (128, 128)) -> list[Path]:
+def generate_synthetic_covers(
+    output_dir: Path | str, count: int = 10, size: tuple[int, int] = (128, 128)
+) -> list[Path]:
     """Generate synthetic cover images with diverse textures for local testing."""
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -64,7 +65,7 @@ def generate_synthetic_covers(output_dir: Path | str, count: int = 10, size: Tup
             b = np.clip((xx + yy) / 2, 0, 255).astype(np.uint8)
             arr = np.stack([r, g, b], axis=-1)
 
-        img = Image.fromarray(arr, mode="RGB")
+        img = Image.fromarray(arr)
         file_path = out_path / f"cover_{i:04d}.png"
         img.save(file_path, format="PNG")
         created.append(file_path)
@@ -80,7 +81,7 @@ def generate_stego_samples_for_cover(
     perm_key: bytes | None = None,
 ) -> list[dict[str, Any]]:
     """Generate clean and stego records with extracted features for a single cover image.
-    
+
     Returns a list of dictionaries ready to be converted into a DataFrame row.
     """
     if payload_ratios is None:
@@ -148,7 +149,7 @@ def generate_stego_samples_for_cover(
                     }
                     rec.update(stego_feats)
                     records.append(rec)
-                except Exception as e:
+                except Exception:
                     # Skip if capacity exceeded
                     continue
 
@@ -220,7 +221,7 @@ def main():
 
     print(f"[*] Processing {len(cover_paths)} cover images...")
     df = build_stego_dataset(cover_paths, payload_ratios=args.ratios)
-    
+
     out_file = Path(args.output_csv)
     out_file.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_file, index=False)

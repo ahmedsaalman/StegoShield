@@ -7,14 +7,13 @@ Verifies:
 - Dataset generator creates paired records without errors.
 """
 
-import pytest
 import numpy as np
 from PIL import Image
 
-from ml.features import extract_features, FEATURE_NAMES
+from ml.dataset import generate_stego_samples_for_cover, generate_synthetic_covers
 from ml.detector import StegoDetector
+from ml.features import FEATURE_NAMES, extract_features
 from ml.risk import PreFlightRiskScorer
-from ml.dataset import generate_synthetic_covers, generate_stego_samples_for_cover
 
 
 def create_smooth_image(width=128, height=128) -> Image.Image:
@@ -23,14 +22,14 @@ def create_smooth_image(width=128, height=128) -> Image.Image:
     y = np.linspace(50, 150, height, dtype=np.uint8)
     xx, yy = np.meshgrid(x, y)
     arr = np.stack([xx, yy, ((xx.astype(int) + yy.astype(int)) // 2).astype(np.uint8)], axis=-1)
-    return Image.fromarray(arr, mode="RGB")
+    return Image.fromarray(arr)
 
 
 def create_textured_image(width=128, height=128) -> Image.Image:
     """Create a noisy / high-texture image (should have high texture, lower risk)."""
     rng = np.random.default_rng(42)
     arr = rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8)
-    return Image.fromarray(arr, mode="RGB")
+    return Image.fromarray(arr)
 
 
 def test_feature_extraction_completeness_and_validity():

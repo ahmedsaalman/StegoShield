@@ -6,18 +6,19 @@ Tests both Password mode and X25519 Asymmetric mode.
 """
 
 import io
+
+import numpy as np
 import pytest
 from PIL import Image
-import numpy as np
 
+from core.crypto import AuthenticationError, InvalidPayloadError
+from core.keys import generate_keypair
 from core.pipeline import (
-    stego_encode_password,
+    stego_decode_asymmetric,
     stego_decode_password,
     stego_encode_asymmetric,
-    stego_decode_asymmetric,
+    stego_encode_password,
 )
-from core.keys import generate_keypair
-from core.crypto import AuthenticationError, InvalidPayloadError, StegoCryptoError
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ def test_image():
     """Create a 150x150 RGB PNG in memory."""
     rng = np.random.default_rng(999)
     arr = rng.integers(30, 220, size=(150, 150, 3), dtype=np.uint8)
-    return Image.fromarray(arr, mode="RGB")
+    return Image.fromarray(arr)
 
 
 def test_password_pipeline_png_roundtrip(test_image):
@@ -35,7 +36,7 @@ def test_password_pipeline_png_roundtrip(test_image):
 
     # Encode & produce PNG
     stego_img = stego_encode_password(test_image, secret, password)
-    
+
     # Save to byte buffer (simulates saving/loading from disk as PNG)
     buf = io.BytesIO()
     stego_img.save(buf, format="PNG")
