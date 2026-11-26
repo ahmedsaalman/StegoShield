@@ -1,164 +1,148 @@
-"""Unit and security tests for StegoShield Cryptographic Engine (Module A).
+"""Unit tests for the StegoShield cryptographic engine (Module A, format v2).
 
-Covers Task L07:
-- Round-trip encryption and decryption for password mode.
-- Round-trip encryption and decryption for asymmetric X25519 mode.
-- Authentication failure on incorrect password / incorrect private key.
-- Tamper-proofing: flipped bit in ciphertext triggers AES-GCM tag failure.
-- Header integrity: tampered salt, nonce, length, or mode triggers failure.
-- Key import/export format tests (PEM, Base64, Hex, encrypted PEM).
+- Round trips in password and X25519 modes.
+- Wrong password / wrong private key is rejected.
+- Any modified byte (stage 1, nonce, length, ciphertext, tag) is rejected.
+- The packet carries no plaintext markers.
+- Key import/export formats.
 """
 
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import x25519
 
 from core.crypto import (
     MAGIC,
-    VERSION,
-    MODE_PASSWORD,
     MODE_ASYMMETRIC,
+    MODE_PASSWORD,
+    SALT_SIZE,
+    X25519_KEY_SIZE,
     AuthenticationError,
     InvalidPayloadError,
-    encrypt_password,
-    decrypt_password,
-    encrypt_asymmetric,
     decrypt_asymmetric,
-    derive_permutation_key_from_password,
-    derive_permutation_key_from_public_key,
-    inspect_payload_header,
+    decrypt_password,
+    derive_password_session,
+    encrypt_asymmetric,
+    encrypt_password,
+    locator_key_from_password,
+    locator_key_from_public_key,
+    packet_overhead,
 )
 from core.keys import (
-    generate_keypair,
     export_private_key_pem,
-    import_private_key_pem,
-    export_public_key_pem,
-    import_public_key_pem,
     export_public_key_base64,
-    import_public_key_base64,
+    export_public_key_pem,
+    generate_keypair,
+    import_private_key_pem,
     import_public_key_auto,
 )
 
-
 # ==============================================================================
-# Password Mode Tests
+# Password Mode
 # ==============================================================================
 
 def test_password_mode_round_trip():
-    """Verify that encrypted text is recovered losslessly with correct password."""
     secret = "TopSecretStegoMessage 12345! @#$%"
-    password = "CorrectHorseBatteryStaple#99"
-
-    payload, perm_key = encrypt_password(secret, password)
-    assert isinstance(payload, bytes)
-    assert isinstance(perm_key, bytes)
-    assert len(perm_key) == 32
-
-    recovered = decrypt_password(payload, password)
-    assert recovered.decode("utf-8") == secret
+    packet = encrypt_password(secret, "CorrectHorseBatteryStaple#99")
+    assert len(packet) == len(secret) + packet_overhead(MODE_PASSWORD)
+    assert decrypt_password(packet, "CorrectHorseBatteryStaple#99").decode() == secret
 
 
 def test_password_mode_binary_round_trip():
-    """Verify binary data round trip."""
-    secret_bytes = bytes(range(256))
-    password = "BinaryPassword123!"
-
-    payload, _ = encrypt_password(secret_bytes, password)
-    recovered = decrypt_password(payload, password)
-    assert recovered == secret_bytes
+    secret = bytes(range(256))
+    assert decrypt_password(encrypt_password(secret, "BinaryPassword123!"), "BinaryPassword123!") == secret
 
 
 def test_password_mode_wrong_password_fails():
-    """Decryption with the wrong password must raise AuthenticationError."""
-    secret = "Sensitive Information"
-    payload, _ = encrypt_password(secret, "CorrectPassword123")
-
+    packet = encrypt_password("Sensitive Information", "CorrectPassword123")
     with pytest.raises(AuthenticationError):
-        decrypt_password(payload, "WrongPassword123")
+        decrypt_password(packet, "WrongPassword123")
 
 
-def test_password_mode_ciphertext_tampering_fails():
-    """Modifying even a single bit in the ciphertext triggers AES-GCM tag verification failure."""
-    secret = "IntegrityProtectedData"
-    password = "SafePassword"
-    payload, _ = encrypt_password(secret, password)
-
-    # Flip the last bit in the ciphertext / tag
-    tampered = bytearray(payload)
-    tampered[-1] ^= 0x01
-
+@pytest.mark.parametrize(
+    "offset, region",
+    [(0, "salt"), (SALT_SIZE + 3, "nonce"), (SALT_SIZE + 13, "masked length"), (-20, "ciphertext"), (-1, "tag")],
+)
+def test_password_mode_any_byte_tampering_fails(offset, region):
+    """Flipping a bit anywhere in the packet must be rejected."""
+    packet = bytearray(encrypt_password("IntegrityProtectedData", "SafePassword"))
+    packet[offset] ^= 0x01
     with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered), password)
+        decrypt_password(bytes(packet), "SafePassword")
 
 
-def test_password_mode_header_tampering_fails():
-    """Modifying header bytes triggers AAD failure or InvalidPayloadError."""
-    secret = "HeaderTamperTest"
-    password = "SafePassword"
-    payload, _ = encrypt_password(secret, password)
-
-    # Corrupt magic bytes
-    tampered_magic = b"XXXX" + payload[4:]
+def test_password_mode_truncated_packet():
     with pytest.raises(InvalidPayloadError):
-        decrypt_password(tampered_magic, password)
-
-    # Corrupt salt byte (offset 10)
-    tampered_salt = bytearray(payload)
-    tampered_salt[10] ^= 0xFF
-    with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered_salt), password)
-
-    # Corrupt nonce byte (offset 25)
-    tampered_nonce = bytearray(payload)
-    tampered_nonce[25] ^= 0xFF
-    with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered_nonce), password)
+        decrypt_password(b"short", "password")
 
 
-def test_password_mode_truncated_payload():
-    """Truncated payload must be rejected cleanly."""
-    with pytest.raises(InvalidPayloadError):
-        decrypt_password(b"STSH\x01\x01short", "password")
+def test_password_packets_are_randomised():
+    """Same message + password twice gives unrelated packets (fresh salt and nonce)."""
+    a = encrypt_password("same", "pw")
+    b = encrypt_password("same", "pw")
+    assert a[:SALT_SIZE] != b[:SALT_SIZE]
+    assert a != b
 
 
 # ==============================================================================
-# Asymmetric Mode Tests (X25519 ECDH)
+# Asymmetric Mode (X25519)
 # ==============================================================================
 
 def test_asymmetric_mode_round_trip():
-    """Verify asymmetric encryption/decryption with valid keypair."""
     alice_priv, alice_pub = generate_keypair()
-    secret = "AsymmetricSecretFromSender"
-
-    payload, perm_key = encrypt_asymmetric(secret, alice_pub)
-    assert len(perm_key) == 32
-
-    recovered = decrypt_asymmetric(payload, alice_priv)
-    assert recovered.decode("utf-8") == secret
+    packet = encrypt_asymmetric("AsymmetricSecretFromSender", alice_pub)
+    assert len(packet) == len("AsymmetricSecretFromSender") + packet_overhead(MODE_ASYMMETRIC)
+    assert decrypt_asymmetric(packet, alice_priv) == b"AsymmetricSecretFromSender"
 
 
 def test_asymmetric_mode_wrong_private_key_fails():
-    """Decryption with an unrelated private key must raise AuthenticationError."""
-    alice_priv, alice_pub = generate_keypair()
+    _, alice_pub = generate_keypair()
     bob_priv, _ = generate_keypair()
-
-    payload, _ = encrypt_asymmetric("SecretForAlice", alice_pub)
-
     with pytest.raises(AuthenticationError):
-        decrypt_asymmetric(payload, bob_priv)
+        decrypt_asymmetric(encrypt_asymmetric("SecretForAlice", alice_pub), bob_priv)
 
 
-def test_asymmetric_mode_tamper_ephemeral_key_fails():
-    """Tampering with the embedded ephemeral public key must raise AuthenticationError."""
+@pytest.mark.parametrize("offset", [5, X25519_KEY_SIZE - 1, X25519_KEY_SIZE + 2, -1])
+def test_asymmetric_mode_tampering_fails(offset):
+    """Tampering with the one-time key (including its random top bit) or the body is rejected."""
     alice_priv, alice_pub = generate_keypair()
-    payload, _ = encrypt_asymmetric("SecretForAlice", alice_pub)
-
-    # Ephemeral key starts at offset 6 (length 32)
-    tampered = bytearray(payload)
-    tampered[12] ^= 0xAA
-
+    packet = bytearray(encrypt_asymmetric("SecretForAlice", alice_pub))
+    packet[offset] ^= 0x80
     with pytest.raises(AuthenticationError):
-        decrypt_asymmetric(bytes(tampered), alice_priv)
+        decrypt_asymmetric(bytes(packet), alice_priv)
+
+
+def test_asymmetric_top_bit_is_randomised():
+    """The embedded one-time key must not have a constant top bit (X25519 keys always have it 0)."""
+    _, pub = generate_keypair()
+    top_bits = {encrypt_asymmetric("x", pub)[X25519_KEY_SIZE - 1] >> 7 for _ in range(40)}
+    assert top_bits == {0, 1}
+
+
+# ==============================================================================
+# No plaintext markers & key separation
+# ==============================================================================
+
+def test_packets_contain_no_magic_bytes():
+    _, pub = generate_keypair()
+    for _ in range(3):
+        assert MAGIC not in encrypt_password("hello", "pw")
+        assert MAGIC not in encrypt_asymmetric("hello", pub)
+
+
+def test_session_subkeys_are_independent():
+    keys = derive_password_session("MasterPassword2026", b"\x00" * 16)
+    assert len({keys.enc_key, keys.slot_key}) == 2
+    assert len(keys.enc_key) == len(keys.slot_key) == 32 and len(keys.mask_key) == 4
+    # Locator key is unrelated to the PBKDF2-derived keys
+    assert locator_key_from_password("MasterPassword2026") not in (keys.enc_key, keys.slot_key)
+
+
+def test_locator_keys_are_deterministic_and_distinct():
+    assert locator_key_from_password("a") == locator_key_from_password("a")
+    assert locator_key_from_password("a") != locator_key_from_password("b")
+    _, p1 = generate_keypair()
+    _, p2 = generate_keypair()
+    assert locator_key_from_public_key(p1) != locator_key_from_public_key(p2)
 
 
 # ==============================================================================
@@ -187,7 +171,7 @@ def test_keypair_generation_and_export():
     loaded_enc_priv = import_private_key_pem(enc_pem, password="KeyPassphrase123")
     assert loaded_enc_priv is not None
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         import_private_key_pem(enc_pem, password="WrongPassphrase")
 
 
@@ -224,36 +208,3 @@ def test_public_key_formats_and_auto_import():
     ) == raw_pub_bytes
 
 
-# ==============================================================================
-# Permutation Key & Header Inspection Tests
-# ==============================================================================
-
-def test_permutation_key_properties():
-    """Permutation keys must be deterministic and distinct for different secrets."""
-    k1 = derive_permutation_key_from_password("passA")
-    k2 = derive_permutation_key_from_password("passA")
-    k3 = derive_permutation_key_from_password("passB")
-
-    assert k1 == k2
-    assert k1 != k3
-    assert len(k1) == 32
-
-    _, pub1 = generate_keypair()
-    _, pub2 = generate_keypair()
-    pk1 = derive_permutation_key_from_public_key(pub1)
-    pk2 = derive_permutation_key_from_public_key(pub2)
-    assert pk1 != pk2
-    assert len(pk1) == 32
-
-
-def test_header_inspection():
-    """Inspect header metadata without decryption."""
-    payload, _ = encrypt_password("TestInspect", "inspectpass")
-    info = inspect_payload_header(payload)
-
-    assert info["magic"] == "STSH"
-    assert info["version"] == 1
-    assert info["mode"] == "password"
-    assert "salt" in info
-    assert "nonce" in info
-    assert info["ciphertext_length"] == len("TestInspect") + 16

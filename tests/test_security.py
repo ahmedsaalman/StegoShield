@@ -1,178 +1,197 @@
-"""Comprehensive Security, Integrity, and Tamper-Testing Suite (Task L25).
+"""Security, integrity and attack tests (format v2).
 
-Tests all adversarial attack scenarios:
-1. Bit-flipping attacks on ciphertext and authentication tags (AES-GCM integrity).
-2. Header tampering (magic bytes, version, mode, salt, nonce, length).
-3. Wrong key & unauthorized extraction attempts.
-4. Image cropping & truncation attacks.
-5. Cryptographic key separation (HKDF permutation seed vs encryption key).
-6. Generates a markdown validation table summarizing security guarantees.
+Each test maps to one row of tests/security_results.md:
+1. Pixel tampering of a stego image is rejected.
+2. Cropping is rejected cleanly.
+3. Wrong password / wrong private key is rejected.
+4. Public key alone can't locate or confirm a message (regression for the v1 leak).
+5. A password guess can't be confirmed without paying PBKDF2 (regression for the v1 shortcut).
+6. No plaintext marker is written anywhere in the image.
+7. Two messages with the same password use different stage-2 positions.
 """
 
-from pathlib import Path
-import pytest
 import numpy as np
+import pytest
 from PIL import Image
+from scipy import stats
 
 from core.crypto import (
+    MAGIC,
+    SALT_SIZE,
+    STAGE2_HEADER_SIZE,
+    X25519_KEY_SIZE,
     AuthenticationError,
-    InvalidPayloadError,
-    StegoCryptoError,
-    encrypt_password,
-    decrypt_password,
-    encrypt_asymmetric,
-    decrypt_asymmetric,
-    _derive_symmetric_keys,
-    derive_permutation_key_from_password,
+    derive_password_session,
+    locator_key_from_password,
+    locator_key_from_public_key,
 )
-from core.embed import embed_payload, extract_payload
+from core.embed import bits_to_bytes, image_to_carrier, read_bits, select_slots
 from core.keys import generate_keypair
-from core.pipeline import stego_encode_password, stego_decode_password
+from core.pipeline import (
+    stego_decode_asymmetric,
+    stego_decode_password,
+    stego_encode_asymmetric,
+    stego_encode_password,
+)
 
 
 @pytest.fixture
 def carrier_image() -> Image.Image:
-    """Standard 120x120 RGB carrier."""
     rng = np.random.default_rng(777)
-    arr = rng.integers(20, 230, size=(120, 120, 3), dtype=np.uint8)
-    return Image.fromarray(arr, mode="RGB")
+    return Image.fromarray(rng.integers(20, 230, size=(120, 120, 3), dtype=np.uint8))
 
 
-# ==============================================================================
-# 1. Bit-Flipping Integrity Tests
-# ==============================================================================
+def _flat(img: Image.Image) -> np.ndarray:
+    return image_to_carrier(img)[1]
 
-def test_security_single_bit_flip_in_ciphertext():
-    """Flipping any single bit in the ciphertext must cause immediate AES-GCM verification failure."""
-    secret = "Confidential Payload Under Attack"
-    password = "RobustDefensePassword#1"
-    payload, _ = encrypt_password(secret, password)
 
-    # Flip single bit in ciphertext region
-    tampered = bytearray(payload)
-    tampered[-5] ^= 0x01
+def _read(flat: np.ndarray, count_bytes: int, key: bytes, exclude=None) -> bytes:
+    slots = select_slots(len(flat), count_bytes * 8, key, exclude=exclude)
+    return bits_to_bytes(read_bits(flat, slots))
 
+
+# 1. Pixel tampering --------------------------------------------------------------
+
+def test_pixel_tampering_is_rejected(carrier_image):
+    stego = np.array(stego_encode_password(carrier_image, "Tamper resistance", "PixelPass#4"))
+    stego[:60, :, :] ^= 0x01  # flip the LSB of every channel in the top half
     with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered), password)
+        stego_decode_password(Image.fromarray(stego), "PixelPass#4")
 
 
-def test_security_auth_tag_tampering():
-    """Tampering with the 16-byte AES-GCM authentication tag must be rejected."""
-    secret = "Authenticated Authenticity Test"
-    password = "TagSecurityPassword#2"
-    payload, _ = encrypt_password(secret, password)
-
-    # Tag is in the last 16 bytes
-    tampered = bytearray(payload)
-    tampered[-1] ^= 0x80
-
+def test_single_slot_tampering_is_rejected(carrier_image):
+    """Flipping one embedded bit of the ciphertext is enough to reject the message."""
+    password = "OneBitPass"
+    stego = stego_encode_password(carrier_image, "one bit matters", password)
+    arr, flat, _ = image_to_carrier(stego)
+    s1 = select_slots(len(flat), SALT_SIZE * 8, locator_key_from_password(password))
+    salt = bits_to_bytes(read_bits(flat, s1))
+    keys = derive_password_session(password, salt)
+    s2 = select_slots(len(flat), (STAGE2_HEADER_SIZE + 5) * 8, keys.slot_key, exclude=s1)
+    flat[s2[-1]] ^= 1
+    tampered = arr.copy()
+    tampered[:] = flat.reshape(arr.shape)
     with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered), password)
+        stego_decode_password(Image.fromarray(tampered), password)
 
 
-def test_security_aad_header_tampering():
-    """Modifying nonces, salts, or version flags in the AAD header must be caught by AES-GCM."""
-    secret = "AAD Security Defense"
-    password = "HeaderArmorPassword#3"
-    payload, _ = encrypt_password(secret, password)
+# 2. Cropping ----------------------------------------------------------------------
 
-    # Flip bit in salt (byte index 8)
-    tampered_salt = bytearray(payload)
-    tampered_salt[8] ^= 0x04
+def test_cropped_image_fails_safely(carrier_image):
+    stego = stego_encode_password(carrier_image, "Resistant to cropping", "CropPass#5")
+    w, h = stego.size
     with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered_salt), password)
+        stego_decode_password(stego.crop((0, 0, w // 2, h // 2)), "CropPass#5")
 
-    # Flip bit in nonce (byte index 24)
-    tampered_nonce = bytearray(payload)
-    tampered_nonce[24] ^= 0x02
+
+# 3. Wrong keys --------------------------------------------------------------------
+
+def test_wrong_password_and_wrong_private_key(carrier_image):
     with pytest.raises(AuthenticationError):
-        decrypt_password(bytes(tampered_nonce), password)
+        stego_decode_password(stego_encode_password(carrier_image, "x", "right"), "wrong")
+    _, alice_pub = generate_keypair()
+    eve_priv, _ = generate_keypair()
+    with pytest.raises(AuthenticationError):
+        stego_decode_asymmetric(stego_encode_asymmetric(carrier_image, "x", alice_pub), eve_priv)
 
 
-# ==============================================================================
-# 2. Stego-Carrier Pixel Tampering
-# ==============================================================================
+# 4. Public key alone reveals nothing ---------------------------------------------
 
-def test_security_stego_carrier_pixel_corruption(carrier_image):
-    """Modifying pixels in the stego-carrier image must trigger safe authentication failure."""
-    secret = "Tamper Resistance in Carrier File"
-    password = "PixelProtectionPassword#4"
+def test_public_key_holder_cannot_find_message(carrier_image):
+    """v1 bug: positions came from the public key, so anyone could read 'STSH'.
 
-    stego_img = stego_encode_password(carrier_image, secret, password)
-    stego_arr = np.array(stego_img)
-
-    # Corrupt 50% of the carrier pixels
-    stego_arr[:60, :, :] ^= 0x01
-    corrupted_img = Image.fromarray(stego_arr, mode="RGB")
-
-    # Decoding corrupted image must fail safely without leaking partial data
-    with pytest.raises((AuthenticationError, InvalidPayloadError)):
-        stego_decode_password(corrupted_img, password)
-
-
-# ==============================================================================
-# 3. Truncation and Cropping Resistance
-# ==============================================================================
-
-def test_security_cropped_image_fails_safely(carrier_image):
-    """Cropping the stego carrier image truncates required bits and must fail cleanly."""
-    secret = "Resistant to Cropping Exploits"
-    password = "CroppingDefensePassword#5"
-
-    stego_img = stego_encode_password(carrier_image, secret, password)
-    
-    # Crop 50% of the image
-    w, h = stego_img.size
-    cropped_img = stego_img.crop((0, 0, w // 2, h // 2))
-
-    with pytest.raises(StegoCryptoError):
-        stego_decode_password(cropped_img, password)
+    In v2 the public key only locates stage 1, which holds a random one-time key.
+    It differs every time, and the rest of the message sits at positions that
+    need the private key.
+    """
+    _, pub = generate_keypair()
+    locator = locator_key_from_public_key(pub)
+    seen = set()
+    for _ in range(5):
+        flat = _flat(stego_encode_asymmetric(carrier_image, "same message", pub))
+        stage1 = _read(flat, X25519_KEY_SIZE, locator)
+        assert MAGIC not in stage1
+        seen.add(stage1)
+    assert len(seen) == 5  # fresh random bytes each time: nothing constant to look for
 
 
-# ==============================================================================
-# 4. Cryptographic Key Separation
-# ==============================================================================
+# 5. Password guesses can't be confirmed cheaply -----------------------------------
 
-def test_security_key_separation_isolation():
-    """Verify that HKDF subkeys (encryption vs permutation) are mathematically distinct."""
-    password = "MasterPassword2026"
-    salt = b"\x00" * 16
+def test_password_guess_cannot_be_confirmed_without_pbkdf2(carrier_image):
+    """v1 bug: a guess could be checked by reading 'STSH' at cheap HKDF positions.
 
-    enc_key, perm_seed = _derive_symmetric_keys(password, salt)
-    perm_standalone = derive_permutation_key_from_password(password)
-
-    # All keys must be strictly distinct
-    assert enc_key != perm_seed
-    assert enc_key != perm_standalone
-    assert len(enc_key) == 32
-    assert len(perm_seed) == 32
-    assert len(perm_standalone) == 32
+    In v2 the cheap locator only reaches stage 1 (a random salt). The salt
+    changes with every message, so it can't confirm a guess. Everything else
+    needs the PBKDF2 output.
+    """
+    password = "hunter2"
+    locator = locator_key_from_password(password)
+    salts = {_read(_flat(stego_encode_password(carrier_image, "same", password)), SALT_SIZE, locator)
+             for _ in range(5)}
+    assert len(salts) == 5
+    assert all(MAGIC not in s for s in salts)
 
 
-# ==============================================================================
-# 5. Security Audit Log Generator
-# ==============================================================================
+# 6. No plaintext marker anywhere ---------------------------------------------------
 
-def test_generate_security_results_table():
-    """Verify and write the security validation markdown table."""
-    results_path = Path("tests/security_results.md")
+@pytest.mark.parametrize("layout", ["pseudorandom", "sequential"])
+def test_no_magic_bytes_in_image(carrier_image, layout):
+    """Even the sequential baseline (first slots in order) must not expose a marker."""
+    _, pub = generate_keypair()
+    for stego in (
+        stego_encode_password(carrier_image, "find me", "pw", mode=layout),
+        stego_encode_asymmetric(carrier_image, "find me", pub, mode=layout),
+    ):
+        flat = _flat(stego)
+        sequential_read = bits_to_bytes(read_bits(flat, np.arange(len(flat) - len(flat) % 8)))
+        assert MAGIC not in sequential_read
 
-    content = """# StegoShield Security & Tamper-Testing Audit Report
 
-**Evaluation Deliverable:** Task L25  
-**Test Suite:** `tests/test_security.py`
+# 6b. Embedded bits look random -------------------------------------------------------
 
-| Threat Vector | Attack Scenario | Defensive Mechanism | Expected Behavior | Verification Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **Ciphertext Bit Flipping** | Adversary flips bits in transit | AES-256-GCM 128-bit Authentication Tag | `AuthenticationError` raised, 0 plaintext bytes leaked | **PASSED (Verified)** |
-| **Tag Corruption** | Adversary alters authentication tag | Tag verification in AES-GCM engine | Tag mismatch triggers immediate rejection | **PASSED (Verified)** |
-| **Header Tampering** | Adversary modifies length, mode, or salt | Header bound as AAD (Additional Authenticated Data) | AAD validation failure aborts decryption | **PASSED (Verified)** |
-| **Pixel Level Tampering** | Image carrier modified by third party | Key-seeded pseudorandom permutation + GCM | Payload extraction failure or GCM tag failure | **PASSED (Verified)** |
-| **Carrier Cropping** | Image resized or cropped in transit | Fixed-size length header bounds checking | `InvalidPayloadError` raised without crash | **PASSED (Verified)** |
-| **Unauthorized Extraction** | Adversary extracts without password/key | Key-seeded pseudorandom permutation | Extracts uniform random noise (defeats sequential scan) | **PASSED (Verified)** |
-| **Key Cross-Contamination** | Leakage between permutation and crypto | HKDF domain separation (`RFC 5869`) | Mathematical independence between $K_{\\text{enc}}$ and $K_{\\text{perm}}$ | **PASSED (Verified)** |
+RANDOMNESS_ALPHA = 0.01
 
-**Conclusion:** All 7 critical security vectors verified passing with zero leakage.
-"""
-    results_path.write_text(content, encoding="utf-8")
-    assert results_path.exists()
+
+def _passes_randomness_checks(data: bytes) -> bool:
+    """Monobit (share of 1-bits) and byte-frequency chi-square, both at alpha = 0.01."""
+    bits = np.unpackbits(np.frombuffer(data, dtype=np.uint8))
+    monobit_p = stats.binomtest(int(bits.sum()), len(bits), 0.5).pvalue
+    byte_counts = np.bincount(np.frombuffer(data, dtype=np.uint8), minlength=256)
+    chi_square_p = stats.chisquare(byte_counts).pvalue
+    return monobit_p > RANDOMNESS_ALPHA and chi_square_p > RANDOMNESS_ALPHA
+
+
+def test_embedded_bits_pass_randomness_checks():
+    """A highly repetitive message must still embed as random-looking bits.
+
+    Uses the sequential layout so the bits can be read in order WITHOUT any key.
+    Each check fails 1% of the time by chance even on true random data, so we
+    require 2 of 3 independent stego images to pass.
+    """
+    rng = np.random.default_rng(5)
+    cover = Image.fromarray(rng.integers(0, 256, size=(160, 160, 3), dtype=np.uint8))
+    message = "A" * 6_000
+    packet_bytes = 16 + 12 + 4 + len(message) + 16
+
+    passes = 0
+    for _ in range(3):
+        flat = _flat(stego_encode_password(cover, message, "pw", mode="sequential"))
+        passes += _passes_randomness_checks(bits_to_bytes(read_bits(flat, np.arange(packet_bytes * 8))))
+    assert passes >= 2
+    assert _passes_randomness_checks(np.random.default_rng(6).bytes(packet_bytes))  # control: real random data
+
+
+# 7. Positions differ per message -------------------------------------------------------
+
+def test_same_password_uses_different_positions(carrier_image):
+    """Stage-2 positions depend on the per-message salt, so two messages don't line up."""
+    password = "reuse"
+    locator = locator_key_from_password(password)
+    position_sets = []
+    for _ in range(2):
+        flat = _flat(stego_encode_password(carrier_image, "msg", password))
+        s1 = select_slots(len(flat), SALT_SIZE * 8, locator)
+        keys = derive_password_session(password, bits_to_bytes(read_bits(flat, s1)))
+        position_sets.append(select_slots(len(flat), 256, keys.slot_key, exclude=s1))
+    overlap = len(np.intersect1d(position_sets[0], position_sets[1]))
+    assert overlap < 32  # random overlap of 256 of ~43k slots is ~1-2

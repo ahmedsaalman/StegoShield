@@ -10,35 +10,28 @@ A 4-module Streamlit dashboard for:
 from __future__ import annotations
 
 import io
-from pathlib import Path
-from PIL import Image
-import numpy as np
-import streamlit as st
 
-from core.crypto import (
-    encrypt_password,
-    decrypt_password,
-    encrypt_asymmetric,
-    decrypt_asymmetric,
-    derive_permutation_key_from_password,
-    derive_permutation_key_from_public_key,
-    AuthenticationError,
-    InvalidPayloadError,
-)
+import streamlit as st
+from PIL import Image
+
+from core.capacity import CapacityExceededError, calculate_image_capacity
+from core.crypto import AuthenticationError, InvalidPayloadError
 from core.keys import (
-    generate_keypair,
     export_private_key_pem,
-    import_private_key_pem,
-    export_public_key_pem,
     export_public_key_base64,
+    export_public_key_pem,
+    generate_keypair,
+    import_private_key_pem,
     import_public_key_auto,
 )
-from core.capacity import calculate_image_capacity, compute_payload_ratio, CapacityExceededError
-from core.embed import embed_payload, extract_payload
+from core.pipeline import (
+    stego_decode_asymmetric,
+    stego_decode_password,
+    stego_encode_asymmetric,
+    stego_encode_password,
+)
 from ml.detector import StegoDetector
 from ml.risk import PreFlightRiskScorer
-from ml.features import extract_features, FEATURE_NAMES
-
 
 # Page Configuration
 st.set_page_config(
@@ -361,22 +354,17 @@ with tab_hide_extract:
                             if not pwd:
                                 st.error("Please set a password in Tab 1 (or enter one now).")
                                 st.stop()
-                            payload_bytes, perm_key = encrypt_password(secret_msg, pwd)
+                            stego_img = stego_encode_password(
+                                active_cover, secret_msg, pwd, algorithm=algo_choice, mode=perm_choice
+                            )
                         else:
                             recipient_pub = st.session_state.recipient_public_key
                             if not recipient_pub:
                                 st.error("Please import a Recipient Public Key in Tab 1 first.")
                                 st.stop()
-                            payload_bytes, perm_key = encrypt_asymmetric(secret_msg, recipient_pub)
-
-                        eff_key = perm_key if perm_choice == "pseudorandom" else None
-                        stego_img = embed_payload(
-                            cover_image=active_cover,
-                            payload_bytes=payload_bytes,
-                            perm_key=eff_key,
-                            mode=perm_choice,
-                            algorithm=algo_choice,
-                        )
+                            stego_img = stego_encode_asymmetric(
+                                active_cover, secret_msg, recipient_pub, algorithm=algo_choice, mode=perm_choice
+                            )
                         st.session_state.stego_result_image = stego_img
 
                     st.success("🎉 Stego-Image generated successfully! All bits scattered and encrypted.")
@@ -447,25 +435,20 @@ with tab_hide_extract:
                             if not ext_password:
                                 st.error("Please enter the decryption password.")
                                 st.stop()
-                            eff_perm = derive_permutation_key_from_password(ext_password) if ext_perm_choice == "pseudorandom" else None
-                            payload_bytes = extract_payload(stego_in_img, perm_key=eff_perm, mode=ext_perm_choice)
-                            plaintext = decrypt_password(payload_bytes, ext_password)
+                            plaintext = stego_decode_password(stego_in_img, ext_password, mode=ext_perm_choice)
                         else:
                             if not priv_file:
                                 st.error("Please upload your private key PEM.")
                                 st.stop()
                             pem_str = priv_file.read().decode("utf-8", errors="replace")
                             priv_key = import_private_key_pem(pem_str, password=priv_pass or None)
-                            pub = priv_key.public_key()
-                            eff_perm = derive_permutation_key_from_public_key(pub) if ext_perm_choice == "pseudorandom" else None
-                            payload_bytes = extract_payload(stego_in_img, perm_key=eff_perm, mode=ext_perm_choice)
-                            plaintext = decrypt_asymmetric(payload_bytes, priv_key)
+                            plaintext = stego_decode_asymmetric(stego_in_img, priv_key, mode=ext_perm_choice)
 
                     st.success("✅ Payload authenticated and decrypted successfully!")
                     st.text_area("Decrypted Secret Message", value=plaintext.decode("utf-8", errors="replace"), height=140)
 
-                except AuthenticationError:
-                    st.error("🛡️ Security Verification Failed: Authentication tag mismatch. Wrong key or the image was tampered with.")
+                except AuthenticationError as ae:
+                    st.error(f"🛡️ {ae}")
                 except InvalidPayloadError as ip:
                     st.error(f"🛡️ Safe Extraction Failure: {ip}")
                 except Exception as e:

@@ -1,131 +1,208 @@
-"""StegoShield End-to-End Pipeline & CLI (Task L15).
+"""StegoShield End-to-End Pipeline & CLI (format v2).
 
-Unifies:
-  Encrypt -> Keyed Permutation Embed -> Lossless PNG Generation
-  Load PNG -> Keyed Permutation Extract -> Authenticated Decryption
-Supports both password-based symmetric mode and X25519 asymmetric mode.
+Hide:    encrypt -> stage 1 at locator-key slots -> stage 2 at slot-key slots -> PNG
+Reveal:  read stage 1 -> derive keys (PBKDF2 / ECDH) -> read stage 2 -> verify & decrypt
+
+Stage 1 holds only random bytes (salt or one-time public key), so the cheap
+locator key reveals nothing. Stage 2 positions need the derived secret, so they
+can't be found without the password or private key. See docs/payload_format.md.
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
+import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Union
+
+import numpy as np
+from cryptography.hazmat.primitives.asymmetric import x25519
 from PIL import Image
 
-from cryptography.hazmat.primitives.asymmetric import x25519
-
+from core.capacity import CapacityExceededError, calculate_image_capacity
 from core.crypto import (
-    encrypt_password,
-    decrypt_password,
-    encrypt_asymmetric,
-    decrypt_asymmetric,
-    derive_permutation_key_from_password,
-    derive_permutation_key_from_public_key,
+    MODE_ASYMMETRIC,
+    MODE_PASSWORD,
+    NO_MESSAGE_TEXT,
+    NONCE_SIZE,
+    SALT_SIZE,
+    STAGE1_SIZE,
+    STAGE2_HEADER_SIZE,
+    TAG_SIZE,
+    AuthenticationError,
+    SessionKeys,
+    derive_password_session,
+    locator_key_from_password,
+    locator_key_from_public_key,
+    new_asymmetric_session,
+    open_asymmetric_session,
+    open_sealed,
+    packet_overhead,
+    seal,
+    unmask_length,
+)
+from core.embed import (
+    EmbeddingAlgorithm,
+    EmbeddingMode,
+    bits_to_bytes,
+    bytes_to_bits,
+    carrier_to_image,
+    image_to_carrier,
+    read_bits,
+    select_slots,
+    write_bits,
 )
 from core.keys import (
-    generate_keypair,
     export_private_key_pem,
-    import_private_key_pem,
     export_public_key_pem,
+    generate_keypair,
+    import_private_key_pem,
     import_public_key_auto,
 )
-from core.embed import embed_payload, extract_payload, EmbeddingAlgorithm, EmbeddingMode
-from core.capacity import calculate_image_capacity, check_capacity
+
+ImageInput = str | Path | Image.Image
 
 
-def _load_image(img_input: Union[str, Path, Image.Image]) -> Image.Image:
+def _load_image(img_input: ImageInput) -> Image.Image:
     if isinstance(img_input, (str, Path)):
         return Image.open(str(img_input))
-    elif isinstance(img_input, Image.Image):
+    if isinstance(img_input, Image.Image):
         return img_input
     raise TypeError(f"Expected file path or PIL Image, got {type(img_input).__name__}")
 
 
+def max_message_bytes(image: Image.Image, enc_mode: str = "password") -> int:
+    """Largest plaintext (in bytes) this image can carry in the given mode."""
+    mode_id = MODE_PASSWORD if enc_mode == "password" else MODE_ASYMMETRIC
+    slots = calculate_image_capacity(image)["total_carrier_bits"]
+    return max(0, slots // 8 - packet_overhead(mode_id))
+
+
 # ==============================================================================
-# Password-Based High-Level Pipeline
+# Two-stage core
+# ==============================================================================
+
+def _hide(
+    cover: Image.Image,
+    locator_key: bytes,
+    stage1: bytes,
+    keys: SessionKeys,
+    stage2: bytes,
+    algorithm: EmbeddingAlgorithm,
+    mode: EmbeddingMode,
+    mode_id: int,
+) -> Image.Image:
+    arr, flat, img_mode = image_to_carrier(cover)
+    total = len(flat)
+    need_bits = (len(stage1) + len(stage2)) * 8
+    if need_bits > total:
+        plaintext_len = len(stage2) - STAGE2_HEADER_SIZE - TAG_SIZE
+        raise CapacityExceededError(
+            f"Message is {plaintext_len:,} bytes but this {cover.width}x{cover.height} image "
+            f"can hold at most {max(0, total // 8 - packet_overhead(mode_id)):,} bytes."
+        )
+    s1 = select_slots(total, len(stage1) * 8, locator_key, mode)
+    s2 = select_slots(total, len(stage2) * 8, keys.slot_key, mode, exclude=s1)
+    rng = np.random.default_rng(int.from_bytes(keys.matching_key, "big"))
+    write_bits(flat, s1, bytes_to_bits(stage1), algorithm, rng)
+    write_bits(flat, s2, bytes_to_bits(stage2), algorithm, rng)
+    return carrier_to_image(arr, flat, img_mode)
+
+
+def _reveal(
+    stego: Image.Image,
+    locator_key: bytes,
+    open_keys: Callable[[bytes], SessionKeys],
+    mode: EmbeddingMode,
+    mode_id: int,
+) -> bytes:
+    _, flat, _ = image_to_carrier(stego)
+    total = len(flat)
+    s1_bits = STAGE1_SIZE[mode_id] * 8
+    hdr_bits = STAGE2_HEADER_SIZE * 8
+    if total < s1_bits + hdr_bits + TAG_SIZE * 8:
+        raise AuthenticationError(NO_MESSAGE_TEXT)
+
+    # Stage 1: random salt / one-time public key
+    s1 = select_slots(total, s1_bits, locator_key, mode)
+    stage1 = bits_to_bytes(read_bits(flat, s1))
+    keys = open_keys(stage1)
+
+    # Stage 2 header: nonce + masked length
+    hdr = bits_to_bytes(read_bits(flat, select_slots(total, hdr_bits, keys.slot_key, mode, exclude=s1)))
+    length = unmask_length(hdr[NONCE_SIZE:], keys)
+    if length <= TAG_SIZE or s1_bits + hdr_bits + length * 8 > total:
+        raise AuthenticationError(NO_MESSAGE_TEXT)
+
+    # Full stage 2 (prefix property: the first hdr_bits slots are the header again)
+    s2 = select_slots(total, hdr_bits + length * 8, keys.slot_key, mode, exclude=s1)
+    stage2 = bits_to_bytes(read_bits(flat, s2))
+    return open_sealed(mode_id, stage1, keys, stage2)
+
+
+# ==============================================================================
+# Password mode
 # ==============================================================================
 
 def stego_encode_password(
-    cover: Union[str, Path, Image.Image],
-    secret_message: Union[str, bytes],
+    cover: ImageInput,
+    secret_message: str | bytes,
     password: str,
     algorithm: EmbeddingAlgorithm = "replacement",
     mode: EmbeddingMode = "pseudorandom",
 ) -> Image.Image:
-    """Encrypt and embed secret message into cover image using password mode."""
-    cover_img = _load_image(cover)
-    payload_bytes, perm_key = encrypt_password(secret_message, password)
-
-    effective_perm_key = perm_key if mode == "pseudorandom" else None
-    return embed_payload(
-        cover_image=cover_img,
-        payload_bytes=payload_bytes,
-        perm_key=effective_perm_key,
-        mode=mode,
-        algorithm=algorithm,
+    """Encrypt with a password and hide the message in the cover image."""
+    salt = os.urandom(SALT_SIZE)
+    keys = derive_password_session(password, salt)
+    stage2 = seal(MODE_PASSWORD, salt, keys, secret_message)
+    return _hide(
+        _load_image(cover), locator_key_from_password(password), salt, keys, stage2,
+        algorithm, mode, MODE_PASSWORD,
     )
 
 
 def stego_decode_password(
-    stego: Union[str, Path, Image.Image],
+    stego: ImageInput,
     password: str,
     mode: EmbeddingMode = "pseudorandom",
 ) -> bytes:
-    """Extract and decrypt secret message from stego image using password mode."""
-    stego_img = _load_image(stego)
-    effective_perm_key = derive_permutation_key_from_password(password) if mode == "pseudorandom" else None
-
-    payload_bytes = extract_payload(
-        stego_image=stego_img,
-        perm_key=effective_perm_key,
-        mode=mode,
+    """Recover and decrypt a password-mode message."""
+    return _reveal(
+        _load_image(stego), locator_key_from_password(password),
+        lambda salt: derive_password_session(password, salt), mode, MODE_PASSWORD,
     )
-    return decrypt_password(payload_bytes, password)
 
 
 # ==============================================================================
-# Asymmetric (X25519) High-Level Pipeline
+# Asymmetric (X25519) mode
 # ==============================================================================
 
 def stego_encode_asymmetric(
-    cover: Union[str, Path, Image.Image],
-    secret_message: Union[str, bytes],
+    cover: ImageInput,
+    secret_message: str | bytes,
     recipient_public_key: x25519.X25519PublicKey,
     algorithm: EmbeddingAlgorithm = "replacement",
     mode: EmbeddingMode = "pseudorandom",
 ) -> Image.Image:
-    """Encrypt and embed secret message into cover image using recipient's public key."""
-    cover_img = _load_image(cover)
-    payload_bytes, perm_key = encrypt_asymmetric(secret_message, recipient_public_key)
-
-    effective_perm_key = perm_key if mode == "pseudorandom" else None
-    return embed_payload(
-        cover_image=cover_img,
-        payload_bytes=payload_bytes,
-        perm_key=effective_perm_key,
-        mode=mode,
-        algorithm=algorithm,
+    """Encrypt to the recipient's public key and hide the message in the cover image."""
+    eph, keys = new_asymmetric_session(recipient_public_key)
+    stage2 = seal(MODE_ASYMMETRIC, eph, keys, secret_message)
+    return _hide(
+        _load_image(cover), locator_key_from_public_key(recipient_public_key), eph, keys, stage2,
+        algorithm, mode, MODE_ASYMMETRIC,
     )
 
 
 def stego_decode_asymmetric(
-    stego: Union[str, Path, Image.Image],
+    stego: ImageInput,
     recipient_private_key: x25519.X25519PrivateKey,
     mode: EmbeddingMode = "pseudorandom",
 ) -> bytes:
-    """Extract and decrypt secret message from stego image using recipient's private key."""
-    stego_img = _load_image(stego)
-    pub = recipient_private_key.public_key()
-    effective_perm_key = derive_permutation_key_from_public_key(pub) if mode == "pseudorandom" else None
-
-    payload_bytes = extract_payload(
-        stego_image=stego_img,
-        perm_key=effective_perm_key,
-        mode=mode,
+    """Recover and decrypt an asymmetric-mode message with the recipient's private key."""
+    return _reveal(
+        _load_image(stego), locator_key_from_public_key(recipient_private_key.public_key()),
+        lambda eph: open_asymmetric_session(recipient_private_key, eph), mode, MODE_ASYMMETRIC,
     )
-    return decrypt_asymmetric(payload_bytes, recipient_private_key)
 
 
 # ==============================================================================
@@ -188,7 +265,7 @@ def main():
         pub_pem = export_public_key_pem(pub)
         Path(args.out_priv).write_text(priv_pem, encoding="utf-8")
         Path(args.out_pub).write_text(pub_pem, encoding="utf-8")
-        print(f"[+] Keypair generated successfully.")
+        print("[+] Keypair generated successfully.")
         print(f"    Private key saved to: {args.out_priv}")
         print(f"    Public key saved to:  {args.out_pub}")
 
@@ -197,9 +274,8 @@ def main():
         cap = calculate_image_capacity(img)
         print(f"Cover Image Capacity ({cap['width']}x{cap['height']}, {cap['channels']} channels):")
         print(f"  Total carrier slots:  {cap['total_carrier_bits']} bits")
-        print(f"  Maximum payload:      {cap['max_payload_bytes']:,} bytes")
-        print(f"  Safe payload (10%):   {cap['safe_payload_bytes']:,} bytes")
-        print(f"  Moderate payload (25%): {cap['moderate_payload_bytes']:,} bytes")
+        print(f"  Max message (password mode):   {max_message_bytes(img, 'password'):,} bytes")
+        print(f"  Max message (public-key mode): {max_message_bytes(img, 'asymmetric'):,} bytes")
 
     elif args.command == "hide-pass":
         stego_img = stego_encode_password(

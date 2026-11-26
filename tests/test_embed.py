@@ -4,25 +4,25 @@ Covers Task L14:
 - Bit/byte conversion round trip.
 - Round-trip embedding and extraction across RGB, RGBA, and Grayscale images.
 - LSB replacement and LSB matching (+/-1) modes.
-- Sequential and pseudorandom permutation modes.
+- Sequential and pseudorandom slot selection (determinism, uniqueness, prefix, exclusion).
 - Wrong permutation key fails safely.
 - Over-capacity rejection (CapacityExceededError).
 - Maximum pixel distortion verification (diff <= 1).
 """
 
-import pytest
 import numpy as np
+import pytest
 from PIL import Image
 
+from core.capacity import CapacityExceededError
+from core.crypto import InvalidPayloadError
 from core.embed import (
-    bytes_to_bits,
     bits_to_bytes,
-    generate_carrier_permutation,
+    bytes_to_bits,
     embed_payload,
     extract_payload,
+    select_slots,
 )
-from core.capacity import calculate_image_capacity, check_capacity, CapacityExceededError
-from core.crypto import InvalidPayloadError
 
 
 def create_synthetic_image(width=100, height=100, mode="RGB", pattern="gradient") -> Image.Image:
@@ -43,7 +43,7 @@ def create_synthetic_image(width=100, height=100, mode="RGB", pattern="gradient"
         channels = 4 if mode == "RGBA" else (3 if mode == "RGB" else 1)
         arr = rng.integers(0, 256, size=(height, width, channels) if channels > 1 else (height, width), dtype=np.uint8)
 
-    return Image.fromarray(arr, mode=mode)
+    return Image.fromarray(arr)
 
 
 # ==============================================================================
@@ -57,6 +57,40 @@ def test_bits_bytes_round_trip():
     assert len(bits) == len(raw) * 8
     recovered = bits_to_bytes(bits)
     assert recovered == raw
+
+
+# ==============================================================================
+# Slot Selection Tests
+# ==============================================================================
+
+def test_select_slots_deterministic_unique_in_range():
+    a = select_slots(10_000, 3_000, key=b"K" * 32)
+    b = select_slots(10_000, 3_000, key=b"K" * 32)
+    assert np.array_equal(a, b)
+    assert len(np.unique(a)) == 3_000
+    assert a.min() >= 0 and a.max() < 10_000
+    assert not np.array_equal(a, select_slots(10_000, 3_000, key=b"J" * 32))
+
+
+def test_select_slots_prefix_property():
+    """Receiver reads the header first, so a short request must equal the start of a long one."""
+    long = select_slots(50_000, 20_000, key=b"P" * 32)
+    for k in (32, 128, 1_000):
+        assert np.array_equal(select_slots(50_000, k, key=b"P" * 32), long[:k])
+
+
+def test_select_slots_exclusion_and_full_capacity():
+    taken = select_slots(5_000, 1_000, key=b"A" * 32)
+    rest = select_slots(5_000, 4_000, key=b"B" * 32, exclude=taken)  # fills every remaining slot
+    assert len(np.intersect1d(taken, rest)) == 0
+    assert len(np.unique(np.concatenate([taken, rest]))) == 5_000
+    with pytest.raises(CapacityExceededError):
+        select_slots(5_000, 1, key=b"C" * 32, exclude=np.arange(5_000))
+
+
+def test_select_slots_sequential():
+    assert np.array_equal(select_slots(100, 10, mode="sequential"), np.arange(10))
+    assert np.array_equal(select_slots(100, 3, mode="sequential", exclude=np.array([0, 2])), [1, 3, 4])
 
 
 # ==============================================================================

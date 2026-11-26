@@ -1,17 +1,32 @@
-"""StegoShield Cryptographic Engine (Module A).
+"""StegoShield Cryptographic Engine (Module A), format v2.
 
-Implements authenticated symmetric and asymmetric encryption:
-- Password mode: PBKDF2-HMAC-SHA256 (600,000 iterations) + AES-256-GCM.
-- Asymmetric mode: X25519 ECDH + HKDF-SHA256 + AES-256-GCM with ephemeral sender keys.
-- Additional Authenticated Data (AAD) binding on protocol headers to thwart tampering.
-- Cryptographically isolated sub-key derivation for pseudorandom pixel permutation.
+Authenticated encryption for the two keying modes:
+- Password mode:   PBKDF2-HMAC-SHA256 (600,000 iterations) + HKDF + AES-256-GCM.
+- Asymmetric mode: X25519 ECDH with a one-time sender key + HKDF + AES-256-GCM.
+
+Design rule for v2: every byte that ends up inside the image must look random.
+The packet therefore carries NO magic bytes, version or mode in the clear. These
+are bound into the AES-GCM Additional Authenticated Data (AAD) instead, so they
+are still verified but never embedded. The length field is masked with a
+key-derived value.
+
+Packet layout (what gets embedded):
+
+    stage 1 : kdf_material   16 B salt (password) | 32 B one-time X25519 public key
+    stage 2 : nonce (12 B) || masked_length (4 B) || ciphertext + GCM tag (len + 16 B)
+
+Stage 1 is placed at positions derived from a cheap *locator key* (password or
+recipient public key). That is safe because stage 1 is random data, so finding
+it reveals nothing. Stage 2 is placed at positions derived from the *slot key*,
+which only exists after the expensive PBKDF2 or the ECDH exchange.
+See docs/payload_format.md.
 """
 
 from __future__ import annotations
 
 import os
 import struct
-from typing import Tuple, Dict, Any
+from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
@@ -20,364 +35,240 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+# ==============================================================================
+# Protocol constants
+# ==============================================================================
 
-# Protocol Constants
-MAGIC: bytes = b"STSH"
-VERSION: int = 1
+MAGIC: bytes = b"STSH"          # authenticated via AAD only, never embedded
+VERSION: int = 2
 MODE_PASSWORD: int = 1
 MODE_ASYMMETRIC: int = 2
 
 SALT_SIZE: int = 16
 NONCE_SIZE: int = 12
+LENGTH_SIZE: int = 4
 TAG_SIZE: int = 16
 X25519_KEY_SIZE: int = 32
 PBKDF2_ITERATIONS: int = 600_000
 
-# Header layout sizes
-# Mode 1: Magic(4) + Ver(1) + Mode(1) + Salt(16) + Nonce(12) + Length(4) = 38 bytes
-MODE_1_HEADER_SIZE: int = 4 + 1 + 1 + SALT_SIZE + NONCE_SIZE + 4
-# Mode 2: Magic(4) + Ver(1) + Mode(1) + EphPub(32) + Nonce(12) + Length(4) = 54 bytes
-MODE_2_HEADER_SIZE: int = 4 + 1 + 1 + X25519_KEY_SIZE + NONCE_SIZE + 4
+# Bytes stored in stage 1 for each mode
+STAGE1_SIZE: dict[int, int] = {MODE_PASSWORD: SALT_SIZE, MODE_ASYMMETRIC: X25519_KEY_SIZE}
+# Fixed-size prefix of stage 2 (nonce + masked length)
+STAGE2_HEADER_SIZE: int = NONCE_SIZE + LENGTH_SIZE
 
+
+def packet_overhead(mode: int) -> int:
+    """Bytes added on top of the plaintext: stage 1 + nonce + length + tag."""
+    return STAGE1_SIZE[mode] + STAGE2_HEADER_SIZE + TAG_SIZE
+
+
+# ==============================================================================
+# Errors
+# ==============================================================================
 
 class StegoCryptoError(Exception):
     """Base exception for cryptographic operations in StegoShield."""
-    pass
 
 
 class AuthenticationError(StegoCryptoError):
-    """Raised when authentication tag verification fails or data was tampered."""
-    pass
+    """Wrong key, no message present, or data was modified.
+
+    These cases are deliberately indistinguishable: telling them apart would
+    let an attacker confirm whether an image carries a message.
+    """
 
 
 class InvalidPayloadError(StegoCryptoError):
-    """Raised when payload headers, magic bytes, or versions are invalid."""
-    pass
+    """The packet is structurally impossible (e.g. too short to parse)."""
 
 
-def derive_permutation_key_from_password(password: str) -> bytes:
-    """Derive a 32-byte deterministic permutation key from a password.
-    
-    This solves the receiver permutation discovery problem: anyone possessing the
-    password can construct the exact pixel shuffle without needing to parse the
-    embedded header first.
+NO_MESSAGE_TEXT = (
+    "No hidden message could be recovered with this key. "
+    "The key is wrong, the image holds no message, or the image was modified."
+)
+
+
+# ==============================================================================
+# Key derivation
+# ==============================================================================
+
+@dataclass(frozen=True)
+class SessionKeys:
+    """Independent sub-keys derived from one master secret (HKDF domain separation)."""
+
+    enc_key: bytes       # AES-256-GCM key
+    slot_key: bytes      # seeds the stage-2 pixel positions
+    mask_key: bytes      # masks the length field
+    matching_key: bytes  # seeds the +/-1 choices of LSB matching
+
+
+def _hkdf(ikm: bytes, info: bytes, salt: bytes | None = None, length: int = 32) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=length, salt=salt, info=info).derive(ikm)
+
+
+def _session_from_master(master: bytes) -> SessionKeys:
+    return SessionKeys(
+        enc_key=_hkdf(master, b"stegoshield-v2-aes-key"),
+        slot_key=_hkdf(master, b"stegoshield-v2-slot-key"),
+        mask_key=_hkdf(master, b"stegoshield-v2-length-mask", length=LENGTH_SIZE),
+        matching_key=_hkdf(master, b"stegoshield-v2-matching-seed"),
+    )
+
+
+def _raw_public(pub: x25519.X25519PublicKey) -> bytes:
+    return pub.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
+
+
+def locator_key_from_password(password: str) -> bytes:
+    """Cheap key that only locates stage 1 (the random salt).
+
+    Being cheap is fine: an attacker who guesses the password and reads stage 1
+    gets 16 random bytes, which can't confirm or reject the guess.
     """
     if not password:
         raise ValueError("Password cannot be empty.")
-    
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b"stegoshield-permutation-salt-v1",
-        info=b"stegoshield-password-pixel-permutation",
-    )
-    return hkdf.derive(password.encode("utf-8"))
+    return _hkdf(password.encode("utf-8"), b"stegoshield-v2-locator-password", salt=b"stegoshield-v2-locator")
 
 
-def derive_permutation_key_from_public_key(public_key: x25519.X25519PublicKey) -> bytes:
-    """Derive a 32-byte deterministic permutation key from recipient's public key."""
-    raw_pub = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b"stegoshield-permutation-salt-v1",
-        info=b"stegoshield-asymmetric-pixel-permutation",
-    )
-    return hkdf.derive(raw_pub)
+def locator_key_from_public_key(public_key: x25519.X25519PublicKey) -> bytes:
+    """Key that locates stage 1 (the one-time sender public key) from the recipient's public key."""
+    return _hkdf(_raw_public(public_key), b"stegoshield-v2-locator-x25519", salt=b"stegoshield-v2-locator")
 
 
-def _derive_symmetric_keys(password: str, salt: bytes) -> tuple[bytes, bytes]:
-    """Derive AES encryption key and payload permutation key using PBKDF2 + HKDF."""
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=PBKDF2_ITERATIONS,
-    )
-    master_key = kdf.derive(password.encode("utf-8"))
-
-    # Derive separate AES encryption key
-    enc_kdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"stegoshield-aes-encryption",
-    )
-    enc_key = enc_kdf.derive(master_key)
-
-    # Derive separate permutation seed (used when payload-specific permutation is requested)
-    perm_kdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"stegoshield-pixel-permutation",
-    )
-    perm_key = perm_kdf.derive(master_key)
-    return enc_key, perm_key
-
-
-def _derive_asymmetric_keys(shared_secret: bytes) -> tuple[bytes, bytes]:
-    """Derive AES encryption key and permutation key from ECDH shared secret."""
-    master_kdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"stegoshield-x25519-master",
-    )
-    master_key = master_kdf.derive(shared_secret)
-
-    enc_kdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"stegoshield-aes-encryption",
-    )
-    enc_key = enc_kdf.derive(master_key)
-
-    perm_kdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"stegoshield-pixel-permutation",
-    )
-    perm_key = perm_kdf.derive(master_key)
-    return enc_key, perm_key
-
-
-def encrypt_password(plaintext: bytes | str, password: str) -> tuple[bytes, bytes]:
-    """Encrypt plaintext using PBKDF2-HMAC-SHA256 and AES-256-GCM.
-    
-    Returns:
-        tuple[bytes, bytes]: (full_payload_bytes, permutation_key)
-    """
-    if isinstance(plaintext, str):
-        plaintext = plaintext.encode("utf-8")
-    if not plaintext:
-        raise ValueError("Plaintext cannot be empty.")
+def derive_password_session(password: str, salt: bytes) -> SessionKeys:
+    """PBKDF2-HMAC-SHA256 (600k iterations) then HKDF into independent sub-keys."""
     if not password:
         raise ValueError("Password cannot be empty.")
-
-    salt = os.urandom(SALT_SIZE)
-    nonce = os.urandom(NONCE_SIZE)
-    enc_key, _ = _derive_symmetric_keys(password, salt)
-    perm_key = derive_permutation_key_from_password(password)
-
-    # Calculate ciphertext length (AES-GCM adds 16-byte tag)
-    cipher_len = len(plaintext) + TAG_SIZE
-
-    # Header: Magic(4) + Version(1) + Mode(1) + Salt(16) + Nonce(12) + Length(4)
-    header = (
-        MAGIC
-        + bytes([VERSION, MODE_PASSWORD])
-        + salt
-        + nonce
-        + struct.pack(">I", cipher_len)
-    )
-
-    # Pass the entire header as AAD (Additional Authenticated Data)
-    aesgcm = AESGCM(enc_key)
-    ciphertext_and_tag = aesgcm.encrypt(nonce, plaintext, associated_data=header)
-
-    full_payload = header + ciphertext_and_tag
-    return full_payload, perm_key
+    master = PBKDF2HMAC(
+        algorithm=hashes.SHA256(), length=32, salt=salt, iterations=PBKDF2_ITERATIONS
+    ).derive(password.encode("utf-8"))
+    return _session_from_master(master)
 
 
-def decrypt_password(payload_bytes: bytes, password: str) -> bytes:
-    """Decrypt and authenticate a StegoShield payload using password mode.
-    
-    Raises:
-        InvalidPayloadError: If magic, version, mode, or length is invalid.
-        AuthenticationError: If AES-GCM tag verification fails (wrong key or tampering).
-    """
-    if not password:
-        raise ValueError("Password cannot be empty.")
-    if len(payload_bytes) < MODE_1_HEADER_SIZE + TAG_SIZE:
-        raise InvalidPayloadError("Payload is too short to be a valid StegoShield payload.")
-
-    magic = payload_bytes[:4]
-    if magic != MAGIC:
-        raise InvalidPayloadError(f"Invalid magic bytes: expected {MAGIC!r}, got {magic!r}")
-
-    version = payload_bytes[4]
-    if version != VERSION:
-        raise InvalidPayloadError(f"Unsupported protocol version: {version}")
-
-    mode = payload_bytes[5]
-    if mode != MODE_PASSWORD:
-        raise InvalidPayloadError(f"Expected password mode ({MODE_PASSWORD}), got mode {mode}")
-
-    offset = 6
-    salt = payload_bytes[offset : offset + SALT_SIZE]
-    offset += SALT_SIZE
-
-    nonce = payload_bytes[offset : offset + NONCE_SIZE]
-    offset += NONCE_SIZE
-
-    (cipher_len,) = struct.unpack(">I", payload_bytes[offset : offset + 4])
-    offset += 4
-
-    header = payload_bytes[:MODE_1_HEADER_SIZE]
-    ciphertext_and_tag = payload_bytes[offset : offset + cipher_len]
-
-    if len(ciphertext_and_tag) != cipher_len:
-        raise InvalidPayloadError(
-            f"Payload truncated: expected {cipher_len} bytes, got {len(ciphertext_and_tag)}"
-        )
-
-    enc_key, _ = _derive_symmetric_keys(password, salt)
-    aesgcm = AESGCM(enc_key)
-
-    try:
-        plaintext = aesgcm.decrypt(nonce, ciphertext_and_tag, associated_data=header)
-    except InvalidTag as e:
-        raise AuthenticationError("Decryption failed: incorrect password or tampered data.") from e
-
-    return plaintext
+def _canonical_x25519(embedded: bytes) -> bytes:
+    """Clear the top bit. X25519 ignores it (RFC 7748), and we randomise it when embedding."""
+    return embedded[:-1] + bytes([embedded[-1] & 0x7F])
 
 
-def encrypt_asymmetric(
-    plaintext: bytes | str,
+def _asymmetric_master(shared_secret: bytes, eph_canonical: bytes, recipient_raw: bytes) -> bytes:
+    return _hkdf(shared_secret, b"stegoshield-v2-x25519-master", salt=eph_canonical + recipient_raw)
+
+
+def new_asymmetric_session(
     recipient_public_key: x25519.X25519PublicKey,
-) -> tuple[bytes, bytes]:
-    """Encrypt plaintext using X25519 ECDH key exchange and AES-256-GCM.
-    
-    Generates an ephemeral sender keypair.
-    
-    Returns:
-        tuple[bytes, bytes]: (full_payload_bytes, permutation_key)
+) -> tuple[bytes, SessionKeys]:
+    """Sender side: make a one-time keypair, run ECDH, derive sub-keys.
+
+    Returns the 32 bytes to embed in stage 1 (one-time public key with a random
+    top bit, so it has no constant bit) and the session keys.
     """
+    if not isinstance(recipient_public_key, x25519.X25519PublicKey):
+        raise TypeError("recipient_public_key must be an X25519PublicKey.")
+    eph_priv = x25519.X25519PrivateKey.generate()
+    eph_canonical = _raw_public(eph_priv.public_key())
+    top_bit = os.urandom(1)[0] & 0x80
+    eph_embedded = eph_canonical[:-1] + bytes([eph_canonical[-1] | top_bit])
+
+    shared = eph_priv.exchange(recipient_public_key)
+    master = _asymmetric_master(shared, eph_canonical, _raw_public(recipient_public_key))
+    return eph_embedded, _session_from_master(master)
+
+
+def open_asymmetric_session(
+    recipient_private_key: x25519.X25519PrivateKey,
+    eph_embedded: bytes,
+) -> SessionKeys:
+    """Recipient side: recompute the session keys from the embedded one-time public key."""
+    if not isinstance(recipient_private_key, x25519.X25519PrivateKey):
+        raise TypeError("recipient_private_key must be an X25519PrivateKey.")
+    if len(eph_embedded) != X25519_KEY_SIZE:
+        raise InvalidPayloadError("One-time public key has the wrong length.")
+    eph_canonical = _canonical_x25519(eph_embedded)
+    try:
+        shared = recipient_private_key.exchange(x25519.X25519PublicKey.from_public_bytes(eph_canonical))
+    except ValueError as e:  # all-zero shared secret (low-order point): treat as no message
+        raise AuthenticationError(NO_MESSAGE_TEXT) from e
+    master = _asymmetric_master(shared, eph_canonical, _raw_public(recipient_private_key.public_key()))
+    return _session_from_master(master)
+
+
+# ==============================================================================
+# Sealing / opening stage 2
+# ==============================================================================
+
+def _aad(mode: int, stage1: bytes, nonce: bytes, length: int) -> bytes:
+    """Everything that must be authenticated but not embedded."""
+    return MAGIC + bytes([VERSION, mode]) + stage1 + nonce + struct.pack(">I", length)
+
+
+def _mask(length: int, mask_key: bytes) -> bytes:
+    return bytes(a ^ b for a, b in zip(struct.pack(">I", length), mask_key, strict=True))
+
+
+def unmask_length(masked: bytes, keys: SessionKeys) -> int:
+    """Recover the ciphertext length from its masked 4-byte form."""
+    (length,) = struct.unpack(">I", bytes(a ^ b for a, b in zip(masked, keys.mask_key, strict=True)))
+    return length
+
+
+def seal(mode: int, stage1: bytes, keys: SessionKeys, plaintext: bytes | str) -> bytes:
+    """Encrypt plaintext and return stage 2: nonce || masked_length || ciphertext+tag."""
     if isinstance(plaintext, str):
         plaintext = plaintext.encode("utf-8")
     if not plaintext:
         raise ValueError("Plaintext cannot be empty.")
-    if not isinstance(recipient_public_key, x25519.X25519PublicKey):
-        raise TypeError("recipient_public_key must be an instance of X25519PublicKey.")
-
-    # Generate ephemeral sender keypair
-    sender_priv = x25519.X25519PrivateKey.generate()
-    sender_pub = sender_priv.public_key()
-    eph_pub_bytes = sender_pub.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
-
-    shared_secret = sender_priv.exchange(recipient_public_key)
-    enc_key, _ = _derive_asymmetric_keys(shared_secret)
-    perm_key = derive_permutation_key_from_public_key(recipient_public_key)
-
     nonce = os.urandom(NONCE_SIZE)
-    cipher_len = len(plaintext) + TAG_SIZE
-
-    # Header: Magic(4) + Version(1) + Mode(1) + EphPub(32) + Nonce(12) + Length(4)
-    header = (
-        MAGIC
-        + bytes([VERSION, MODE_ASYMMETRIC])
-        + eph_pub_bytes
-        + nonce
-        + struct.pack(">I", cipher_len)
-    )
-
-    aesgcm = AESGCM(enc_key)
-    ciphertext_and_tag = aesgcm.encrypt(nonce, plaintext, associated_data=header)
-
-    full_payload = header + ciphertext_and_tag
-    return full_payload, perm_key
+    length = len(plaintext) + TAG_SIZE
+    ct = AESGCM(keys.enc_key).encrypt(nonce, plaintext, _aad(mode, stage1, nonce, length))
+    return nonce + _mask(length, keys.mask_key) + ct
 
 
-def decrypt_asymmetric(
-    payload_bytes: bytes,
-    recipient_private_key: x25519.X25519PrivateKey,
-) -> bytes:
-    """Decrypt and authenticate an asymmetric payload using recipient's private key.
-    
-    Raises:
-        InvalidPayloadError: If header validation fails.
-        AuthenticationError: If AES-GCM authentication fails.
-    """
-    if not isinstance(recipient_private_key, x25519.X25519PrivateKey):
-        raise TypeError("recipient_private_key must be an instance of X25519PrivateKey.")
-    if len(payload_bytes) < MODE_2_HEADER_SIZE + TAG_SIZE:
-        raise InvalidPayloadError("Payload is too short to be a valid StegoShield payload.")
-
-    magic = payload_bytes[:4]
-    if magic != MAGIC:
-        raise InvalidPayloadError(f"Invalid magic bytes: expected {MAGIC!r}, got {magic!r}")
-
-    version = payload_bytes[4]
-    if version != VERSION:
-        raise InvalidPayloadError(f"Unsupported protocol version: {version}")
-
-    mode = payload_bytes[5]
-    if mode != MODE_ASYMMETRIC:
-        raise InvalidPayloadError(f"Expected asymmetric mode ({MODE_ASYMMETRIC}), got mode {mode}")
-
-    offset = 6
-    eph_pub_bytes = payload_bytes[offset : offset + X25519_KEY_SIZE]
-    offset += X25519_KEY_SIZE
-
-    nonce = payload_bytes[offset : offset + NONCE_SIZE]
-    offset += NONCE_SIZE
-
-    (cipher_len,) = struct.unpack(">I", payload_bytes[offset : offset + 4])
-    offset += 4
-
-    header = payload_bytes[:MODE_2_HEADER_SIZE]
-    ciphertext_and_tag = payload_bytes[offset : offset + cipher_len]
-
-    if len(ciphertext_and_tag) != cipher_len:
-        raise InvalidPayloadError(
-            f"Payload truncated: expected {cipher_len} bytes, got {len(ciphertext_and_tag)}"
-        )
-
-    eph_pub_key = x25519.X25519PublicKey.from_public_bytes(eph_pub_bytes)
-    shared_secret = recipient_private_key.exchange(eph_pub_key)
-    enc_key, _ = _derive_asymmetric_keys(shared_secret)
-
-    aesgcm = AESGCM(enc_key)
+def open_sealed(mode: int, stage1: bytes, keys: SessionKeys, stage2: bytes) -> bytes:
+    """Verify and decrypt stage 2. Raises AuthenticationError on any mismatch."""
+    if len(stage2) < STAGE2_HEADER_SIZE + TAG_SIZE:
+        raise InvalidPayloadError("Packet is too short to contain a message.")
+    nonce = stage2[:NONCE_SIZE]
+    length = unmask_length(stage2[NONCE_SIZE:STAGE2_HEADER_SIZE], keys)
+    ct = stage2[STAGE2_HEADER_SIZE:]
+    if length != len(ct):
+        raise AuthenticationError(NO_MESSAGE_TEXT)
     try:
-        plaintext = aesgcm.decrypt(nonce, ciphertext_and_tag, associated_data=header)
+        return AESGCM(keys.enc_key).decrypt(nonce, ct, _aad(mode, stage1, nonce, length))
     except InvalidTag as e:
-        raise AuthenticationError("Decryption failed: incorrect private key or tampered data.") from e
-
-    return plaintext
+        raise AuthenticationError(NO_MESSAGE_TEXT) from e
 
 
-def inspect_payload_header(payload_bytes: bytes) -> dict[str, Any]:
-    """Parse header without decrypting to inspect metadata."""
-    if len(payload_bytes) < 6:
-        raise InvalidPayloadError("Payload too short for header inspection.")
-    
-    magic = payload_bytes[:4]
-    if magic != MAGIC:
-        raise InvalidPayloadError("Not a valid StegoShield payload.")
-    
-    version = payload_bytes[4]
-    mode = payload_bytes[5]
+# ==============================================================================
+# Whole-packet helpers (packet = stage1 || stage2)
+# ==============================================================================
 
-    info: dict[str, Any] = {
-        "magic": magic.decode("ascii", errors="replace"),
-        "version": version,
-        "mode": "password" if mode == MODE_PASSWORD else ("asymmetric" if mode == MODE_ASYMMETRIC else "unknown"),
-        "mode_id": mode,
-    }
+def encrypt_password(plaintext: bytes | str, password: str) -> bytes:
+    """Encrypt with a password. Returns the full packet: salt || stage 2."""
+    salt = os.urandom(SALT_SIZE)
+    keys = derive_password_session(password, salt)
+    return salt + seal(MODE_PASSWORD, salt, keys, plaintext)
 
-    if mode == MODE_PASSWORD:
-        if len(payload_bytes) < MODE_1_HEADER_SIZE:
-            raise InvalidPayloadError("Mode 1 header truncated.")
-        info["header_size"] = MODE_1_HEADER_SIZE
-        info["salt"] = payload_bytes[6 : 6 + SALT_SIZE]
-        info["nonce"] = payload_bytes[6 + SALT_SIZE : 6 + SALT_SIZE + NONCE_SIZE]
-        (info["ciphertext_length"],) = struct.unpack(">I", payload_bytes[34:38])
-    elif mode == MODE_ASYMMETRIC:
-        if len(payload_bytes) < MODE_2_HEADER_SIZE:
-            raise InvalidPayloadError("Mode 2 header truncated.")
-        info["header_size"] = MODE_2_HEADER_SIZE
-        info["ephemeral_public_key"] = payload_bytes[6 : 6 + X25519_KEY_SIZE]
-        info["nonce"] = payload_bytes[6 + X25519_KEY_SIZE : 6 + X25519_KEY_SIZE + NONCE_SIZE]
-        (info["ciphertext_length"],) = struct.unpack(">I", payload_bytes[50:54])
 
-    return info
+def decrypt_password(packet: bytes, password: str) -> bytes:
+    """Decrypt a full password-mode packet."""
+    if not password:
+        raise ValueError("Password cannot be empty.")
+    if len(packet) < packet_overhead(MODE_PASSWORD):
+        raise InvalidPayloadError("Packet is too short to contain a message.")
+    salt, stage2 = packet[:SALT_SIZE], packet[SALT_SIZE:]
+    return open_sealed(MODE_PASSWORD, salt, derive_password_session(password, salt), stage2)
 
+
+def encrypt_asymmetric(plaintext: bytes | str, recipient_public_key: x25519.X25519PublicKey) -> bytes:
+    """Encrypt to a recipient's public key. Returns the full packet: one-time pubkey || stage 2."""
+    eph, keys = new_asymmetric_session(recipient_public_key)
+    return eph + seal(MODE_ASYMMETRIC, eph, keys, plaintext)
+
+
+def decrypt_asymmetric(packet: bytes, recipient_private_key: x25519.X25519PrivateKey) -> bytes:
+    """Decrypt a full asymmetric-mode packet with the recipient's private key."""
+    if len(packet) < packet_overhead(MODE_ASYMMETRIC):
+        raise InvalidPayloadError("Packet is too short to contain a message.")
+    eph, stage2 = packet[:X25519_KEY_SIZE], packet[X25519_KEY_SIZE:]
+    keys = open_asymmetric_session(recipient_private_key, eph)
+    return open_sealed(MODE_ASYMMETRIC, eph, keys, stage2)
