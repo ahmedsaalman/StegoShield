@@ -167,3 +167,17 @@ def test_full_check_on_512px_cover_takes_under_five_seconds():
     checker.check(cover, 500)
 
     assert time.perf_counter() - start < 5.0
+
+
+def test_predict_risk_matches_the_planned_size_in_a_full_check():
+    cover = photo_like_cover()
+    checker = PreflightChecker(ChangedSlotsDetector(cover), seed=0)
+
+    single = checker.predict_risk(cover, 300, key_mode="asymmetric", algorithm="matching")
+    full = checker.check(cover, 300, key_mode="asymmetric", algorithm="matching")
+
+    assert (single.probability, single.level, single.ratio) == (
+        full.risk_probability,
+        full.risk_level,
+        full.planned_ratio,
+    )

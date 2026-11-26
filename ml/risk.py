@@ -117,32 +117,16 @@ class PreflightChecker:
             ValueError: If the planned size is negative or the key mode is unknown.
             CapacityExceededError: If the planned message doesn't fit in the cover.
         """
-        overhead = _packet_overhead(key_mode)
-        if planned_message_bytes < 0:
-            raise ValueError("Planned message size can't be negative.")
         rgb = cover.convert("RGB")
-        total_slots = rgb.width * rgb.height * SLOTS_PER_PIXEL
-        capacity = max(0, total_slots // 8 - overhead)
-        if planned_message_bytes > capacity:
-            raise CapacityExceededError(
-                f"A {planned_message_bytes}-byte message doesn't fit: this cover holds at most "
-                f"{capacity} bytes in {key_mode} mode ({rgb.width}x{rgb.height} image)."
-            )
-
-        planned_packet_bytes = planned_message_bytes + overhead
-        probability = self._simulated_probability(rgb, planned_packet_bytes, algorithm)
-        planned_risk = RatioRisk(
-            ratio=planned_packet_bytes * 8 / total_slots,
-            message_bytes=planned_message_bytes,
-            probability=probability,
-            level=classify_risk(probability),
-        )
+        overhead = _packet_overhead(key_mode)
+        capacity = _capacity_bytes(rgb, overhead)
+        planned_risk = self.predict_risk(rgb, planned_message_bytes, key_mode, algorithm)
         ratio_risks = tuple(self._ratio_risk(rgb, ratio, overhead, capacity, algorithm) for ratio in PAYLOAD_RATIOS)
         return PreflightResult(
             capacity_bytes=capacity,
             planned_message_bytes=planned_message_bytes,
             planned_ratio=planned_risk.ratio,
-            risk_probability=probability,
+            risk_probability=planned_risk.probability,
             risk_level=planned_risk.level,
             # The planned size counts too: a Low-risk plan is a safe size even if 5 % is not.
             recommended_max_bytes=_largest_low_risk_bytes((*ratio_risks, planned_risk)),
@@ -150,10 +134,42 @@ class PreflightChecker:
             texture_complexity=texture_complexity(rgb),
         )
 
+    def predict_risk(
+        self,
+        cover: Image.Image,
+        planned_message_bytes: int,
+        key_mode: str = "password",
+        algorithm: EmbeddingAlgorithm = "replacement",
+    ) -> RatioRisk:
+        """Simulated risk for the planned size only: one detector call instead of check()'s five.
+
+        Raises:
+            ValueError: If the planned size is negative or the key mode is unknown.
+            CapacityExceededError: If the planned message doesn't fit in the cover.
+        """
+        overhead = _packet_overhead(key_mode)
+        if planned_message_bytes < 0:
+            raise ValueError("Planned message size can't be negative.")
+        rgb = cover.convert("RGB")
+        capacity = _capacity_bytes(rgb, overhead)
+        if planned_message_bytes > capacity:
+            raise CapacityExceededError(
+                f"A {planned_message_bytes}-byte message doesn't fit: this cover holds at most "
+                f"{capacity} bytes in {key_mode} mode ({rgb.width}x{rgb.height} image)."
+            )
+        planned_packet_bytes = planned_message_bytes + overhead
+        probability = self._simulated_probability(rgb, planned_packet_bytes, algorithm)
+        return RatioRisk(
+            ratio=planned_packet_bytes * 8 / _total_slots(rgb),
+            message_bytes=planned_message_bytes,
+            probability=probability,
+            level=classify_risk(probability),
+        )
+
     def _ratio_risk(
         self, rgb: Image.Image, ratio: float, overhead: int, capacity: int, algorithm: EmbeddingAlgorithm
     ) -> RatioRisk:
-        packet_bytes = int(rgb.width * rgb.height * SLOTS_PER_PIXEL * ratio) // 8
+        packet_bytes = int(_total_slots(rgb) * ratio) // 8
         probability = self._simulated_probability(rgb, packet_bytes, algorithm)
         return RatioRisk(
             ratio=ratio,
@@ -175,6 +191,14 @@ def texture_complexity(cover: Image.Image) -> float:
     """Laplacian variance of the greyscale cover: higher means more texture to hide changes in."""
     gray = np.asarray(cover.convert("L"))
     return extract_complexity_features(gray)["img_laplacian_var"]
+
+
+def _total_slots(rgb: Image.Image) -> int:
+    return rgb.width * rgb.height * SLOTS_PER_PIXEL
+
+
+def _capacity_bytes(rgb: Image.Image, overhead: int) -> int:
+    return max(0, _total_slots(rgb) // 8 - overhead)
 
 
 def _packet_overhead(key_mode: str) -> int:
