@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from core.crypto import (
     TAG_SIZE,
     AuthenticationError,
     SessionKeys,
+    StegoCryptoError,
     derive_password_session,
     locator_key_from_password,
     locator_key_from_public_key,
@@ -230,8 +232,13 @@ def stego_decode_asymmetric(
 # CLI Entry Point
 # ==============================================================================
 
+# ValueError covers CapacityExceededError, empty inputs and unreadable keys; OSError covers
+# missing or unreadable files. Their messages never contain passwords or key material.
+CLI_EXPECTED_ERRORS = (StegoCryptoError, ValueError, TypeError, OSError)
 
-def main():
+
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point; returns the process exit code (0 success, 1 expected failure)."""
     parser = argparse.ArgumentParser(
         prog="StegoShield",
         description="StegoShield CLI: Encrypted Steganography & Steganalysis",
@@ -279,8 +286,17 @@ def main():
     p_ext_asym.add_argument("--passphrase", default=None, help="Passphrase if private key is encrypted")
     p_ext_asym.add_argument("--mode", choices=["pseudorandom", "sequential"], default="pseudorandom")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    try:
+        _run_command(args)
+    except CLI_EXPECTED_ERRORS as error:
+        # Expected failures (wrong key, too-large message, missing file) get one line, not a traceback.
+        print(f"[!] {error}", file=sys.stderr)
+        return 1
+    return 0
 
+
+def _run_command(args: argparse.Namespace) -> None:
     if args.command == "gen-keys":
         priv, pub = generate_keypair()
         priv_pem = export_private_key_pem(priv, password=args.passphrase)
@@ -345,4 +361,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

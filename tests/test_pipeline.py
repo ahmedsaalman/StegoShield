@@ -14,6 +14,7 @@ from PIL import Image
 from core.crypto import AuthenticationError, InvalidPayloadError
 from core.keys import generate_keypair
 from core.pipeline import (
+    main,
     stego_decode_asymmetric,
     stego_decode_password,
     stego_encode_asymmetric,
@@ -96,3 +97,60 @@ def test_asymmetric_pipeline_wrong_key_fails(test_image):
 
     with pytest.raises((AuthenticationError, InvalidPayloadError)):
         stego_decode_asymmetric(loaded_stego, bob_priv)
+
+
+# --- command-line interface -------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cover_file(test_image, tmp_path):
+    path = tmp_path / "cover.png"
+    test_image.save(path)
+    return path
+
+
+def test_cli_password_round_trip_prints_the_message(cover_file, tmp_path, capsys):
+    stego = tmp_path / "stego.png"
+
+    hide_code = main(
+        ["hide-pass", "--cover", str(cover_file), "--message", "hi there", "--password", "pw-1", "--out", str(stego)]
+    )
+    reveal_code = main(["extract-pass", "--stego", str(stego), "--password", "pw-1"])
+
+    assert (hide_code, reveal_code) == (0, 0)
+    assert "[+] Secret Message: hi there" in capsys.readouterr().out
+
+
+def test_cli_wrong_password_prints_one_line_error_without_traceback(cover_file, tmp_path, capsys):
+    stego = tmp_path / "stego.png"
+    main(["hide-pass", "--cover", str(cover_file), "--message", "hi", "--password", "right-pw", "--out", str(stego)])
+
+    exit_code = main(["extract-pass", "--stego", str(stego), "--password", "wrong-pw"])
+
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    assert err.startswith("[!] No hidden message could be recovered")
+    assert "Traceback" not in err and "wrong-pw" not in err
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (["hide-pass", "--message", "x" * 20000, "--password", "p", "--out", "{tmp}/o.png"], "can hold at most"),
+        (
+            ["hide-asym", "--message", "hi", "--pubkey", "not-a-key", "--out", "{tmp}/o.png"],
+            "Could not parse public key",
+        ),
+        (["capacity", "--cover", "{tmp}/missing.png"], "missing.png"),
+    ],
+)
+def test_cli_expected_failures_exit_1_with_a_message(cover_file, tmp_path, capsys, args, expected):
+    args = [arg.replace("{tmp}", str(tmp_path)) for arg in args]
+    if args[0] != "capacity":
+        args[1:1] = ["--cover", str(cover_file)]
+
+    exit_code = main(args)
+
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    assert expected in err and "Traceback" not in err
