@@ -15,4 +15,4 @@ frontend/dist
 *.pdf
 *.xlsx
 .DS_Store
-deploy/oracle/.env
+deploy/vm/.env

@@ -32,7 +32,7 @@ StegoShield closes all three: it measures risk before embedding, hides data that
 | Application with an Evaluation Lab | React + TypeScript web app on a stateless FastAPI back end, plus a CLI |
 | Reproducible evaluation | Five experiment scripts, held-out covers only, fixed seeds |
 
-**Out of scope, as proposed:** CNN detectors, a separate risk-regression model, adaptive or JPEG-domain steganography, audio and video carriers, real social-media tests, production hosting and user accounts. (One demo instance runs on an Oracle Cloud free-tier VM so the examiners can try the app; it stores nothing.)
+**Out of scope, as proposed:** CNN detectors, a separate risk-regression model, adaptive or JPEG-domain steganography, audio and video carriers, real social-media tests, production hosting and user accounts. (One demo instance runs on a Google Cloud free-tier VM so the examiners can try the app; it stores nothing.)
 
 **Changes from the proposal.**
 - The single-file Streamlit dashboard was replaced by a React front end and a FastAPI back end. This gave a production-grade UI (accessibility, light and dark themes, phone-width layouts) and a testable API. It is stateless: nothing uploaded is stored.
