@@ -108,6 +108,94 @@ export interface RevealRequest {
   layout: EmbeddingLayout;
 }
 
+// --- Evaluation Lab (mirrors the Lab models in api/schemas.py) ---
+
+export type LabOutcome = "recovered" | "failed_safely" | "unsafe";
+
+export interface QualityPoint {
+  algorithm: EmbeddingAlgorithm;
+  payload_percent: number;
+  psnr_db: number | null;
+  ssim: number;
+}
+
+export interface LabQuality {
+  points: QualityPoint[];
+}
+
+export interface TransportTrial {
+  transport: string;
+  label: string;
+  outcome: LabOutcome;
+}
+
+export interface LabRobustness {
+  message_bytes: number;
+  trials: TransportTrial[];
+}
+
+export interface AttackTrial {
+  attack: string;
+  description: string;
+  outcome: LabOutcome;
+}
+
+export interface LabAttacks {
+  trials: AttackTrial[];
+}
+
+export interface DetectorPoint {
+  algorithm: EmbeddingAlgorithm;
+  payload_percent: number;
+  probability: number;
+  is_detected: boolean;
+}
+
+export interface LabDetectorComparison {
+  clean_probability: number;
+  threshold: number;
+  points: DetectorPoint[];
+}
+
+export interface SliceAuc {
+  algorithm: EmbeddingAlgorithm;
+  layout: EmbeddingLayout;
+  payload_percent: number;
+  roc_auc: number;
+}
+
+export interface PreflightValidityRow {
+  texture: "all" | "smooth" | "textured";
+  predicted_level: RiskLevel;
+  n_trials: number;
+  actual_detection_rate: number;
+}
+
+export interface RobustnessRow {
+  transport: string;
+  label: string;
+  n_trials: number;
+  recovered_rate: number;
+  failed_safely_rate: number;
+  unsafe_rate: number;
+}
+
+export interface QualityRow {
+  algorithm: EmbeddingAlgorithm;
+  payload_percent: number;
+  psnr_mean_db: number;
+  ssim_mean: number;
+}
+
+export interface LabResults {
+  seed: number;
+  held_out_covers: number;
+  detector: SliceAuc[];
+  preflight_validity: PreflightValidityRow[];
+  robustness: RobustnessRow[];
+  quality: QualityRow[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -149,6 +237,18 @@ export const api = {
     const response = await send("/hide", { method: "POST", body: toFormData(hideFields(request)), signal });
     return { blob: await response.blob(), filename: filenameFrom(response.headers.get("Content-Disposition")) };
   },
+
+  labResults: (signal?: AbortSignal) => getJson<LabResults>("/lab/results", signal),
+
+  labQuality: (image: File, signal?: AbortSignal) => postFormJson<LabQuality>("/lab/quality", { image }, signal),
+
+  labRobustness: (image: File, signal?: AbortSignal) =>
+    postFormJson<LabRobustness>("/lab/robustness", { image }, signal),
+
+  labAttacks: (image: File, signal?: AbortSignal) => postFormJson<LabAttacks>("/lab/attacks", { image }, signal),
+
+  labDetectorComparison: (image: File, signal?: AbortSignal) =>
+    postFormJson<LabDetectorComparison>("/lab/detector-comparison", { image }, signal),
 
   reveal: (request: RevealRequest, signal?: AbortSignal) =>
     postFormJson<RevealResult>("/reveal", revealFields(request), signal),

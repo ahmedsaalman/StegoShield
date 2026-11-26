@@ -12,6 +12,7 @@ const TABS = [
   { to: "/reveal", label: "Reveal" },
   { to: "/detect", label: "Detect" },
   { to: "/keys", label: "Keys" },
+  { to: "/lab", label: "Lab" },
 ];
 
 export function Layout() {

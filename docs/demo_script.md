@@ -80,9 +80,8 @@ Show the **Overview** page briefly.
 **Say:** "Same message, same photo, different embedding algorithm. Replacement is caught every time: Sample Pairs Analysis sees the pairs of pixel values it creates. Matching nudges values up or down instead, so at this size it slips under the threshold. It isn't invisible, though: our detector also compares the noise between colour channels, and catches most large matching payloads. That's why matching is the default *and* why the pre-flight check keeps messages small."
 
 ### 7. Evaluation Lab (7:15 → 9:15)
-> Depends on the Evaluation Lab page (Phase 6). If it's not ready, show `docs/results.md` and its figures instead.
 
-**Do:** **Evaluation Lab** → saved results → upload `cover.png` → run the four demos:
+**Do:** **Lab** tab → point at the saved results (top card) → drop `cover.png` into *Run the experiments on your image* → **Run all demos** (~3–5 s):
 - **Attacks:** the control is *Recovered*. Wrong password, wrong private key, bit flips, crop and signature scan all *Failed safely*.
 - **Robustness:** PNG re-save *Recovered*. JPEG q90/q75 and resize *Failed safely*.
 - **Detector comparison** (~5 s): clean ≈23 %; replacement flagged from 10 % (≈98 %); matching passes at 5–10 % (≈28–45 %) and is flagged from 25 % (≈96 %).

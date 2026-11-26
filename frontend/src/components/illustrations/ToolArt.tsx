@@ -1,7 +1,7 @@
 // Small line drawings for the tool pages. On Overview cards they animate on hover/focus of
 // the card; in page title bands (`isAmbient`) they loop gently. Decorative only.
 
-export type ToolArtName = "hide" | "reveal" | "preflight" | "detect" | "keys";
+export type ToolArtName = "hide" | "reveal" | "preflight" | "detect" | "keys" | "lab";
 
 const DETECT_DOTS = Array.from({ length: 6 * 4 }, (_, index) => ({
   x: 58 + (index % 6) * 17,
@@ -69,6 +69,18 @@ export function ToolArt({ name, isAmbient = false }: ToolArtProps) {
             <circle cx="78" cy="56" r="16" />
             <path d="M90 68 L102 80" />
           </g>
+        </>
+      )}
+      {name === "lab" && (
+        <>
+          <path className="art-faint" d="M44 98 H164 M44 98 V20" />
+          <g className="art-bars">
+            <rect x="58" y="70" width="16" height="28" rx="2" />
+            <rect x="84" y="56" width="16" height="42" rx="2" />
+            <rect x="110" y="40" width="16" height="58" rx="2" />
+            <rect x="136" y="28" width="16" height="70" rx="2" />
+          </g>
+          <path className="art-trend" d="M58 62 L92 48 L118 34 L150 22" />
         </>
       )}
       {name === "keys" && (

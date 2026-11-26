@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   request_too_large: "Upload too large",
   unsupported_format: "Unsupported image format",
   invalid_image: "Unreadable image",
+  lab_results_unavailable: "Saved results not available",
 };
 
 const NO_MESSAGE_CHECKLIST = [

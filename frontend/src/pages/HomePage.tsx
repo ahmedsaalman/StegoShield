@@ -99,7 +99,10 @@ export function HomePage() {
             <h2 id="tools-heading" className="section-title">
               Tools
             </h2>
-            <p className="text-muted">Everything runs on this server. Nothing leaves it, and nothing is kept.</p>
+            <p className="text-muted">
+              Everything runs on this server. Nothing leaves it, and nothing is kept. Want the evidence? See the{" "}
+              <Link to="/lab">Evaluation Lab</Link>.
+            </p>
           </div>
           <ul className="feature-grid">
             {TOOLS.map((tool, index) => (

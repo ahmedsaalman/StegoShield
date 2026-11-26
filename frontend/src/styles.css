@@ -1908,6 +1908,102 @@ pre,
   stroke: none;
 }
 
+/* ---------- Evaluation Lab ---------- */
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.lab-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .lab-grid,
+  .lab-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.tool-art .art-bars rect {
+  fill: var(--bg);
+}
+
+.tool-art .art-trend {
+  stroke-dasharray: 3 4;
+}
+
+.outcome-list {
+  display: grid;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.outcome-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.outcome-list li:last-child {
+  border-bottom: 0;
+}
+
+.score-cell {
+  display: inline-grid;
+  gap: 4px;
+}
+
+.probability-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.probability-cell__track {
+  position: relative;
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+}
+
+.probability-cell__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fg-subtle);
+}
+
+.probability-cell__fill--flagged {
+  background: var(--danger-fg);
+}
+
+.probability-cell__marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--fg);
+}
+
+.probability-cell__text {
+  white-space: nowrap;
+}
+
 /* ---------- Image activity overlays ---------- */
 
 .image-frame--overlay,
@@ -2405,6 +2501,56 @@ pre,
 
   .tool-art--ambient .art-key--public {
     animation: key-slide 3.6s ease-in-out -1.8s infinite reverse;
+  }
+
+  @keyframes bar-pulse {
+    0%,
+    100% {
+      transform: scaleY(0.55);
+    }
+
+    50% {
+      transform: none;
+    }
+  }
+
+  .tool-art--ambient .art-bars rect {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+    animation: bar-pulse 3.2s ease-in-out infinite;
+  }
+
+  .tool-art--ambient .art-bars rect:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .tool-art--ambient .art-bars rect:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  .tool-art--ambient .art-bars rect:nth-child(4) {
+    animation-delay: 0.6s;
+  }
+
+  .probability-cell__fill {
+    transform-origin: left center;
+    animation: grow-x 700ms var(--ease-out) both;
+  }
+
+  .outcome-list li {
+    animation: rise 400ms var(--ease-out) both;
+  }
+
+  .outcome-list li:nth-child(2) {
+    animation-delay: 60ms;
+  }
+
+  .outcome-list li:nth-child(3) {
+    animation-delay: 120ms;
+  }
+
+  .outcome-list li:nth-child(n + 4) {
+    animation-delay: 180ms;
   }
 
   /* Work in progress on the chosen image. */
