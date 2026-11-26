@@ -12,10 +12,6 @@ extend-exclude = [".venv", "data", "models", "notebooks"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 
-[tool.ruff.lint.per-file-ignores]
-# Long UI strings; app.py is rewritten in Phase 6, remove this then.
-"app.py" = ["E501"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not slow'"

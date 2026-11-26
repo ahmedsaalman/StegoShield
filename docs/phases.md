@@ -265,8 +265,9 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Warn on JPEG covers; reject JPEG/WebP on reveal with an explanation; enforce size limits client- and server-side.
 - [x] Packaging: `Dockerfile` (single image), `Makefile` (`dev-api`, `dev-web`, `serve`, `check`).
 - [x] Pre-flight page uses the Phase 4 detector-in-the-loop result (only `api/analysis.py` changed; the response shape is unchanged). Without a detector, `/api/preflight` now returns 503 `detector_unavailable`.
-- [ ] **Evaluation Lab page:** live quality, robustness, attack and detector-comparison demos that **import** the `experiments/` code via new API endpoints. No duplication.
-- [ ] Delete `app.py` and the `streamlit` dependency.
+- [x] **Evaluation Lab API:** `/api/lab/{quality,robustness,attacks,detector-comparison}` run the `experiments/` functions on an uploaded image (≤ 1024×1024 px), and `/api/lab/results` serves the saved held-out results. `api/lab.py` is the only adapter; there's no duplicated logic. `experiments/attacks.py` was added as the importable attack demo.
+- [ ] **Evaluation Lab page** (front end): consumes the endpoints above. Built by the front-end session in the new design system; contract in [evaluation_lab_api.md](evaluation_lab_api.md).
+- [x] Delete `app.py` and the `streamlit` dependency.
 
 **Deliverables:** `api/`, `frontend/`, `tests/test_api.py`, `frontend/src/**/*.test.ts(x)`, `Dockerfile`, `Makefile`
 

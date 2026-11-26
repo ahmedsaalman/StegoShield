@@ -25,7 +25,7 @@ from api.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
-from api.routes import analysis, keys, meta, stego
+from api.routes import analysis, keys, lab, meta, stego
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 HASHED_ASSET_CACHE = "public, max-age=31536000, immutable"
@@ -50,7 +50,7 @@ def create_app(settings: Settings | None = None, analysis_service: AnalysisServi
     app.state.analysis = analysis_service or AnalysisService.load(settings.detector_path)
 
     register_error_handlers(app)
-    for router in (meta.router, keys.router, stego.router, analysis.router):
+    for router in (meta.router, keys.router, stego.router, analysis.router, lab.router):
         app.include_router(router)
     _add_middleware(app, settings)
     _mount_front_end(app, settings.static_dir)

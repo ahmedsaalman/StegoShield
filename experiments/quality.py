@@ -75,6 +75,18 @@ def quality_at_ratio(cover: Image.Image, ratio: float, algorithm: str, key: byte
     return measure_quality(cover, stego)
 
 
+def quality_grid(cover: Image.Image, seed: int, label: str) -> list[dict]:
+    """PSNR and SSIM for every payload ratio x algorithm on one cover; `label` keys the seeded payloads."""
+    return [
+        {
+            "ratio": ratio,
+            "algorithm": algorithm,
+            **asdict(quality_at_ratio(cover, ratio, algorithm, seeded_key(seed, "quality", label, ratio, algorithm))),
+        }
+        for ratio, algorithm in product(PAYLOAD_RATIOS, ALGORITHMS)
+    ]
+
+
 def run_quality(cover_ids: list[str], seed: int, cover_dir: Path, workers: int = 1) -> pd.DataFrame:
     """One row per cover x ratio x algorithm."""
     rows_for = partial(_cover_rows, seed=seed, cover_dir=cover_dir)
@@ -117,12 +129,8 @@ def plot_quality(summary: pd.DataFrame) -> Figure:
 
 
 def _cover_rows(cover_id: str, seed: int, cover_dir: Path) -> list[dict]:
-    cover = load_cover(cover_id, cover_dir)
-    rows = []
-    for ratio, algorithm in product(PAYLOAD_RATIOS, ALGORITHMS):
-        score = quality_at_ratio(cover, ratio, algorithm, seeded_key(seed, "quality", cover_id, ratio, algorithm))
-        rows.append({"cover_id": cover_id, "ratio": ratio, "algorithm": algorithm, **asdict(score), "seed": seed})
-    return rows
+    rows = quality_grid(load_cover(cover_id, cover_dir), seed, label=cover_id)
+    return [{"cover_id": cover_id, **row, "seed": seed} for row in rows]
 
 
 if __name__ == "__main__":

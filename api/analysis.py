@@ -89,6 +89,11 @@ class AnalysisService:
         return cls(detector)
 
     @property
+    def detector(self) -> StegoDetector | None:
+        """The loaded detector, or None when it isn't installed."""
+        return self._detector
+
+    @property
     def detector_status(self) -> DetectorStatus:
         if self._detector is None:
             return DetectorStatus(

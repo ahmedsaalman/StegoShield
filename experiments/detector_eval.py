@@ -10,11 +10,13 @@ Usage:
 
 from __future__ import annotations
 
+from itertools import product
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
+from PIL import Image
 from sklearn.metrics import roc_curve
 
 from experiments.common import (
@@ -23,10 +25,11 @@ from experiments.common import (
     assert_held_out,
     base_argument_parser,
     save_figure,
+    seeded_key,
     write_results,
 )
-from ml.dataset import ALGORITHMS, PAYLOAD_RATIOS
-from ml.detector import DEFAULT_DETECTOR_PATH, load_detector_artifact
+from ml.dataset import ALGORITHMS, PAYLOAD_RATIOS, StegoVariant, make_stego_image
+from ml.detector import DEFAULT_DETECTOR_PATH, StegoDetector, load_detector_artifact
 from ml.features import FEATURE_NAMES
 from ml.train_detector import DEFAULT_FEATURES_CSV, evaluate_detector, load_feature_table, split_by_source
 
@@ -89,6 +92,16 @@ def roc_for_slice(scored: pd.DataFrame, ratio: float, algorithm: str, layout: st
     rows = scored[(scored["label"] == 0) | is_slice]
     false_positive_rate, true_positive_rate, _ = roc_curve(rows["label"], rows["probability"])
     return false_positive_rate, true_positive_rate
+
+
+def score_payload_variants(cover: Image.Image, detector: StegoDetector, seed: int, label: str) -> list[dict]:
+    """Detector probability for one cover with seeded random payloads at every ratio x algorithm."""
+    rows = []
+    for algorithm, ratio in product(ALGORITHMS, PAYLOAD_RATIOS):
+        key = seeded_key(seed, "detector-compare", label, ratio, algorithm)
+        stego = make_stego_image(cover, StegoVariant(ratio, ROC_LAYOUT, algorithm), key)
+        rows.append({"algorithm": algorithm, "ratio": ratio, "probability": detector.predict_probability(stego)})
+    return rows
 
 
 def plot_roc_curves(scored: pd.DataFrame) -> Figure:

@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from enum import StrEnum
 from functools import partial
@@ -124,7 +125,21 @@ def transport_trial(cover: Image.Image, message: bytes, password: str, transport
         private_key, public_key = generate_keypair()
         stego = stego_encode_asymmetric(cover, message, public_key, algorithm=ALGORITHM)
         reveal = partial(stego_decode_asymmetric, recipient_private_key=private_key)
-    return _reveal_outcome(reveal, apply_transport(stego, transport), message)
+    return reveal_outcome(reveal, apply_transport(stego, transport), message)
+
+
+def robustness_grid(cover: Image.Image, seed: int, label: str, key_modes: tuple[str, ...] = KEY_MODES) -> list[dict]:
+    """Outcome of every key mode x transport for one cover; `label` keys the seeded message and password."""
+    message = seeded_bytes(seeded_key(seed, "robustness-message", label), MESSAGE_BYTES)
+    password = seeded_bytes(seeded_key(seed, "robustness-password", label), PASSWORD_LENGTH_BYTES).hex()
+    return [
+        {
+            "key_mode": key_mode,
+            "transport": transport.value,
+            "outcome": transport_trial(cover, message, password, transport, key_mode).value,
+        }
+        for key_mode, transport in product(key_modes, Transport)
+    ]
 
 
 def run_robustness(cover_ids: list[str], seed: int, cover_dir: Path, workers: int = 1) -> pd.DataFrame:
@@ -167,7 +182,8 @@ def plot_robustness(summary: pd.DataFrame) -> Figure:
     return figure
 
 
-def _reveal_outcome(reveal, received: Image.Image, message: bytes) -> Outcome:
+def reveal_outcome(reveal: Callable[[Image.Image], bytes], received: Image.Image, message: bytes) -> Outcome:
+    """Try to reveal `received`; recovered only if exactly `message` comes back."""
     try:
         revealed = reveal(received)
     except StegoCryptoError:
@@ -178,20 +194,10 @@ def _reveal_outcome(reveal, received: Image.Image, message: bytes) -> Outcome:
 
 
 def _cover_rows(cover_id: str, seed: int, cover_dir: Path) -> list[dict]:
-    cover = load_cover(cover_id, cover_dir)
-    message = seeded_bytes(seeded_key(seed, "robustness-message", cover_id), MESSAGE_BYTES)
-    password = seeded_bytes(seeded_key(seed, "robustness-password", cover_id), PASSWORD_LENGTH_BYTES).hex()
+    rows = robustness_grid(load_cover(cover_id, cover_dir), seed, label=cover_id)
     return [
-        {
-            "cover_id": cover_id,
-            "key_mode": key_mode,
-            "transport": transport.value,
-            "outcome": transport_trial(cover, message, password, transport, key_mode).value,
-            "message_bytes": MESSAGE_BYTES,
-            "algorithm": ALGORITHM,
-            "seed": seed,
-        }
-        for key_mode, transport in product(KEY_MODES, Transport)
+        {"cover_id": cover_id, **row, "message_bytes": MESSAGE_BYTES, "algorithm": ALGORITHM, "seed": seed}
+        for row in rows
     ]
 
 

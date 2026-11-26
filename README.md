@@ -62,7 +62,6 @@ StegoShield/
 │   ├── payload_format.md  # Binary payload specification
 │   ├── results.md         # Evaluation results: tables, figures, interpretation
 │   └── figures/           # Experiment figures (PNG)
-├── app.py                 # Legacy Streamlit dashboard (superseded by api/ + frontend/)
 ├── Dockerfile             # Single production image: API + built front end
 ├── requirements.txt       # Python dependencies
 └── README.md              # Project documentation
@@ -162,6 +161,11 @@ All endpoints live under `/api`; interactive documentation is at `/api/docs`. Up
 | POST | `/api/hide` | Encrypt and hide a message; returns a PNG |
 | POST | `/api/reveal` | Verify and decrypt a hidden message |
 | POST | `/api/detect` | Probability that an image hides data, with top contributing features |
+| GET | `/api/lab/results` | Evaluation Lab: headline numbers from the saved held-out experiment runs |
+| POST | `/api/lab/quality` | Evaluation Lab: PSNR / SSIM of the upload at 5–50 % payload, both algorithms |
+| POST | `/api/lab/robustness` | Evaluation Lab: does a hidden message survive PNG re-save, JPEG q90/q75, 50 % resize |
+| POST | `/api/lab/attacks` | Evaluation Lab: wrong keys, bit flips, cropping, signature scan against a real message |
+| POST | `/api/lab/detector-comparison` | Evaluation Lab: detector score clean vs replacement vs matching at 5–50 % |
 
 Every error has the same shape: `{"error": {"code", "message", "field?", "request_id"}}`. A wrong key, a modified image and "no message" all return the same `no_message_found` error on purpose.
 

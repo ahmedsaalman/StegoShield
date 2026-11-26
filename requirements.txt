@@ -19,8 +19,5 @@ fastapi==0.165.0
 uvicorn==0.54.0
 python-multipart==0.0.34
 
-# Legacy Streamlit dashboard (app.py), replaced by api/ + frontend/
-streamlit==1.67.0
-
-# Visualization & Evaluation
+# Experiments & Evaluation Lab (experiments/)
 matplotlib==3.11.2

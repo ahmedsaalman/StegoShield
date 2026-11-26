@@ -137,3 +137,96 @@ class RevealResponse(BaseModel):
     message: str
     encoding: MessageEncoding
     message_bytes: int
+
+
+# --- Evaluation Lab ---------------------------------------------------------------------------------
+
+
+class LabOutcome(StrEnum):
+    RECOVERED = "recovered"
+    FAILED_SAFELY = "failed_safely"
+    UNSAFE = "unsafe"
+
+
+class QualityPoint(BaseModel):
+    algorithm: EmbeddingAlgorithmChoice
+    payload_percent: float = Field(description="Share of the image's embeddable bits filled with test data.")
+    psnr_db: float | None = Field(description="Peak signal-to-noise ratio in dB; null if nothing changed.")
+    ssim: float = Field(ge=-1.0, le=1.0, description="Structural similarity to the original (1 = identical).")
+
+
+class LabQualityResponse(BaseModel):
+    points: list[QualityPoint]
+
+
+class TransportTrial(BaseModel):
+    transport: str
+    label: str
+    outcome: LabOutcome
+
+
+class LabRobustnessResponse(BaseModel):
+    message_bytes: int
+    trials: list[TransportTrial]
+
+
+class AttackTrial(BaseModel):
+    attack: str
+    description: str
+    outcome: LabOutcome
+
+
+class LabAttacksResponse(BaseModel):
+    trials: list[AttackTrial]
+
+
+class DetectorPoint(BaseModel):
+    algorithm: EmbeddingAlgorithmChoice
+    payload_percent: float
+    probability: float = Field(ge=0.0, le=1.0)
+    is_detected: bool
+
+
+class LabDetectorComparisonResponse(BaseModel):
+    clean_probability: float = Field(ge=0.0, le=1.0, description="Detector score for the image as uploaded.")
+    threshold: float
+    points: list[DetectorPoint]
+
+
+class SliceAuc(BaseModel):
+    algorithm: EmbeddingAlgorithmChoice
+    layout: EmbeddingLayoutChoice
+    payload_percent: float
+    roc_auc: float
+
+
+class PreflightValidityRow(BaseModel):
+    texture: str = Field(description="all, smooth or textured covers.")
+    predicted_level: RiskLevel
+    n_trials: int
+    actual_detection_rate: float
+
+
+class RobustnessRow(BaseModel):
+    transport: str
+    label: str
+    n_trials: int
+    recovered_rate: float
+    failed_safely_rate: float
+    unsafe_rate: float
+
+
+class QualityRow(BaseModel):
+    algorithm: EmbeddingAlgorithmChoice
+    payload_percent: float
+    psnr_mean_db: float
+    ssim_mean: float
+
+
+class LabResultsResponse(BaseModel):
+    seed: int
+    held_out_covers: int
+    detector: list[SliceAuc]
+    preflight_validity: list[PreflightValidityRow]
+    robustness: list[RobustnessRow]
+    quality: list[QualityRow]

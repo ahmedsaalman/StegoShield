@@ -24,6 +24,8 @@ COPY core/ core/
 COPY ml/ ml/
 COPY api/ api/
 COPY models/ models/
+# The Evaluation Lab reuses the experiment code and serves the saved results CSVs.
+COPY experiments/ experiments/
 COPY --from=frontend /build/frontend/dist frontend/dist
 
 USER stegoshield
