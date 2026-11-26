@@ -2,7 +2,13 @@
 
 import pytest
 
-from deploy.hf_space import main, space_app_url, stage_committed_files
+from deploy.hf_space import (
+    PublishPermissionError,
+    check_token_can_publish,
+    main,
+    space_app_url,
+    stage_committed_files,
+)
 
 
 @pytest.fixture(scope="module")
@@ -54,3 +60,22 @@ def test_malformed_space_id_is_rejected_before_anything_runs(capsys):
         main(["--space", "no-slash", "--dry-run"])
 
     assert "expected OWNER/NAME" in capsys.readouterr().err
+
+
+def identity(role="write", orgs=()):
+    return {"name": "alice", "orgs": [{"name": org} for org in orgs], "auth": {"accessToken": {"role": role}}}
+
+
+@pytest.mark.parametrize("space_id", ["alice/stegoshield", "Alice/stegoshield", "uni-lab/stegoshield"])
+def test_token_may_publish_to_its_own_account_or_its_orgs(space_id):
+    check_token_can_publish(identity(orgs=["uni-lab"]), space_id)
+
+
+def test_token_from_another_account_is_named_in_the_error():
+    with pytest.raises(PublishPermissionError, match=r"belongs to .*'alice'.*cannot publish under 'bob'"):
+        check_token_can_publish(identity(), "bob/stegoshield")
+
+
+def test_read_only_token_is_rejected_before_uploading():
+    with pytest.raises(PublishPermissionError, match="read-only"):
+        check_token_can_publish(identity(role="read"), "alice/stegoshield")

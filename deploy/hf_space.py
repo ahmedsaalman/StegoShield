@@ -47,6 +47,11 @@ SPACE_VARIABLES = {
     "FORWARDED_ALLOW_IPS": "*",
 }
 SPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*$")
+READ_ONLY_TOKEN_ROLE = "read"
+
+
+class PublishPermissionError(Exception):
+    """The token cannot publish to the requested Space; the message says what to change."""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -61,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         try:
             publish(staging_dir, args.space, is_private=args.private)
-        except (HfHubHTTPError, LocalTokenNotFoundError) as error:
+        except (HfHubHTTPError, LocalTokenNotFoundError, PublishPermissionError) as error:
             print(f"[!] Upload failed: {error}", file=sys.stderr)
             return 1
     print(f"Space page: https://huggingface.co/spaces/{args.space}")
@@ -87,6 +92,7 @@ def stage_committed_files(staging_dir: Path) -> Path:
 def publish(staging_dir: Path, space_id: str, is_private: bool) -> None:
     """Create the Docker Space if needed, set its variables, and replace its files with staging_dir."""
     api = HfApi()
+    check_token_can_publish(api.whoami(), space_id)
     api.create_repo(space_id, repo_type="space", space_sdk="docker", private=is_private, exist_ok=True)
     for key, value in SPACE_VARIABLES.items():
         api.add_space_variable(space_id, key, value)
@@ -97,6 +103,25 @@ def publish(staging_dir: Path, space_id: str, is_private: bool) -> None:
         commit_message=f"Deploy StegoShield {_head_commit()}",
         delete_patterns="*",  # mirror HEAD: files removed from the repo disappear from the Space too
     )
+
+
+def check_token_can_publish(identity: dict, space_id: str) -> None:
+    """Fail early, naming the token's real account, instead of with Hugging Face's bare 403.
+
+    Raises:
+        PublishPermissionError: the token is read-only, or its account cannot write to the Space's owner.
+    """
+    account = identity["name"]
+    owner = space_id.split("/", 1)[0]
+    writable_namespaces = {account.lower(), *(org["name"].lower() for org in identity.get("orgs", []))}
+    if owner.lower() not in writable_namespaces:
+        raise PublishPermissionError(
+            f"The token belongs to the Hugging Face account {account!r}, which cannot publish under {owner!r}. "
+            f"Set HF_SPACE to {account}/<name>, or use a token from the {owner!r} account."
+        )
+    role = identity.get("auth", {}).get("accessToken", {}).get("role")
+    if role == READ_ONLY_TOKEN_ROLE:
+        raise PublishPermissionError(f"The token of {account!r} is read-only. Create one with Write access.")
 
 
 def space_app_url(space_id: str) -> str:
