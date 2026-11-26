@@ -28,7 +28,7 @@ This is the authoritative definition of the development phases. Scope comes from
 | 4 | Pre-flight check | B | 1, 3 | ½ day | ✅ |
 | 5 | Experiments | all | 1, 3, 4 | 1 day | ✅ |
 | 6 | Web app + Evaluation Lab | UI, API | 4, 5 | 2 days | 🟡 |
-| 7 | Report & demo | none | 6 | 1 day | ⬜ |
+| 7 | Report & demo | none | 6 | 1 day | 🟡 |
 
 Total: about 6½–7 working days.
 
@@ -282,22 +282,22 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 ---
 
-## Phase 7: Report & demo ⬜
+## Phase 7: Report & demo 🟡
 
 **Goal:** A short final report and a rehearsed live demo; `main` frozen.
 
 **Depends on:** 6
 
 **Tasks:**
-- [ ] Final report built from `revised_proposal.md` + `results.md` (problem, design, results, limitations, future work).
-- [ ] Demo script: key generation → pre-flight check → hide → extract → detect → Evaluation Lab, with a fallback recording in case of laptop/network issues.
+- [x] Final report built from `revised_proposal.md` + `results.md` (problem, design, results, limitations, future work). *`docs/final_report.md`.*
+- [x] Demo script: key generation → pre-flight check → hide → extract → detect → Evaluation Lab, with a fallback recording in case of laptop/network issues. *`docs/demo_script.md`; the expected results were dry-run through the API on cover `0854_0`. The fallback recording itself is made during rehearsal.*
 - [ ] Rehearse at least twice, timed.
 - [ ] Tag the release: `git tag v1.0`.
 
 **Deliverables:** `docs/final_report.pdf` (or `.md`), `docs/demo_script.md`, tag `v1.0`
 
 **Exit criteria:**
-- [ ] Report numbers match `results.md` exactly.
+- [x] Report numbers match `results.md` exactly.
 - [ ] Demo runs start to finish in the allotted time on the presentation machine.
 - [ ] No commits to `main` after the tag except report typo fixes.
 
