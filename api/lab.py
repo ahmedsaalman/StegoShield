@@ -57,7 +57,7 @@ def lab_quality(image: Image.Image) -> LabQualityResponse:
     Raises:
         ApiError: The image is larger than the Lab's pixel limit (413).
     """
-    rows = quality_grid(_lab_image(image), DEFAULT_SEED, label=LAB_LABEL)
+    rows = quality_grid(prepare_lab_image(image), DEFAULT_SEED, label=LAB_LABEL)
     return LabQualityResponse(
         points=[
             QualityPoint(
@@ -77,7 +77,7 @@ def lab_robustness(image: Image.Image) -> LabRobustnessResponse:
     Raises:
         ApiError: The image is larger than the Lab's pixel limit (413).
     """
-    rows = robustness_grid(_lab_image(image), DEFAULT_SEED, label=LAB_LABEL, key_modes=LIVE_KEY_MODES)
+    rows = robustness_grid(prepare_lab_image(image), DEFAULT_SEED, label=LAB_LABEL, key_modes=LIVE_KEY_MODES)
     return LabRobustnessResponse(
         message_bytes=MESSAGE_BYTES,
         trials=[
@@ -97,7 +97,7 @@ def lab_attacks(image: Image.Image) -> LabAttacksResponse:
     Raises:
         ApiError: The image is larger than the Lab's pixel limit (413).
     """
-    results = run_all_attacks(_lab_image(image), DEFAULT_SEED, label=LAB_LABEL)
+    results = run_all_attacks(prepare_lab_image(image), DEFAULT_SEED, label=LAB_LABEL)
     return LabAttacksResponse(
         trials=[
             AttackTrial(
@@ -118,7 +118,7 @@ def lab_detector_comparison(image: Image.Image, detector: StegoDetector | None) 
     """
     if detector is None:
         raise ApiError(503, "detector_unavailable", DETECTOR_UNAVAILABLE_MESSAGE)
-    cover = _lab_image(image)
+    cover = prepare_lab_image(image)
     rows = score_payload_variants(cover, detector, DEFAULT_SEED, label=LAB_LABEL)
     return LabDetectorComparisonResponse(
         clean_probability=_probability(detector.predict_probability(cover)),
@@ -196,7 +196,12 @@ def _load_results(results_dir: Path) -> LabResultsResponse:
     )
 
 
-def _lab_image(image: Image.Image) -> Image.Image:
+def prepare_lab_image(image: Image.Image) -> Image.Image:
+    """RGB copy of a Lab upload.
+
+    Raises:
+        ApiError: The image is over the Lab pixel cap (413).
+    """
     width, height = image.size
     if width * height > LAB_MAX_PIXELS:
         raise ApiError(

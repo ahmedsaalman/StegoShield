@@ -112,7 +112,7 @@ def run_attack(cover: Image.Image, attack: Attack, message: bytes, seed: int) ->
     if attack is Attack.WRONG_PRIVATE_KEY:
         private_key, _ = generate_keypair()
     reveal = partial(stego_decode_asymmetric, recipient_private_key=private_key)
-    return reveal_outcome(reveal, _tamper(stego, attack, seed), message)
+    return reveal_outcome(reveal, tamper_image(stego, attack, seed), message)
 
 
 def sequential_lsb_bytes(image: Image.Image) -> bytes:
@@ -121,7 +121,8 @@ def sequential_lsb_bytes(image: Image.Image) -> bytes:
     return bits_to_bytes(flat & 1)
 
 
-def _tamper(stego: Image.Image, attack: Attack, seed: int) -> Image.Image:
+def tamper_image(stego: Image.Image, attack: Attack, seed: int) -> Image.Image:
+    """Apply a tampering attack (bit flips or crop) to a stego image; other attacks leave it unchanged."""
     if attack is Attack.FLIP_LSBS:
         pixels = np.asarray(stego.convert("RGB")).copy()
         flip = np.random.default_rng(seed).random(pixels.shape) < FLIPPED_SLOT_SHARE
