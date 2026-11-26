@@ -54,7 +54,7 @@ Breaking any of these is a blocker regardless of how clean the code is.
 4. **Reproducible.** Every script takes `--seed` (default fixed) and writes it into its output.
 5. **Calibrated probabilities.** The detector's output is used as a risk probability, so it must be calibrated (`CalibratedClassifierCV`).
 6. **No silent fallbacks.** If the model file is missing, raise a clear error the UI can show. Do not substitute a heuristic and present it as a model score.
-7. **Data stays out of git.** Never commit cover images, stego images, or feature CSVs.
+7. **Data stays out of git.** Never commit cover images, stego images, or feature CSVs. One deliberate exception: the 8 Evaluation Lab samples in `api/samples/` (held-out DIV2K crops, listed in `manifest.json`; a test asserts they are held out). Don't add more without the same check.
 
 ## 4. Clean code standards
 

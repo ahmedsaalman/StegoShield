@@ -230,3 +230,56 @@ class LabResultsResponse(BaseModel):
     preflight_validity: list[PreflightValidityRow]
     robustness: list[RobustnessRow]
     quality: list[QualityRow]
+
+
+# --- Evaluation Lab: live sample run ------------------------------------------------------------------
+
+
+class SampleTexture(StrEnum):
+    SMOOTH = "smooth"
+    MEDIUM = "medium"
+    TEXTURED = "textured"
+
+
+class LabSample(BaseModel):
+    id: str
+    title: str
+    texture: SampleTexture
+    texture_complexity: float = Field(description="Laplacian variance; higher means more texture.")
+    image_url: str
+
+
+class LabSamplesResponse(BaseModel):
+    samples: list[LabSample]
+    source: str = Field(description="Where the sample photos come from and their licence.")
+
+
+class LabSampleRunRequest(BaseModel):
+    payload_percent: float = Field(ge=1, le=50, description="Share of each sample's embeddable bits to fill.")
+
+
+class SampleAlgorithmResult(BaseModel):
+    algorithm: EmbeddingAlgorithmChoice
+    predicted_probability: float = Field(ge=0.0, le=1.0, description="Pre-flight prediction for this size.")
+    predicted_level: RiskLevel
+    actual_probability: float = Field(ge=0.0, le=1.0, description="Detector score on the real stego image.")
+    is_detected: bool
+    psnr_db: float | None = Field(description="Peak signal-to-noise ratio in dB; null if nothing changed.")
+    ssim: float = Field(ge=-1.0, le=1.0)
+    changed_values: int = Field(description="Colour values (R, G or B) that differ from the cover.")
+    changed_share: float = Field(ge=0.0, le=1.0)
+    stego_preview: str = Field(description="data: URL of a small JPEG preview of the stego image (display only).")
+    change_map: str = Field(
+        description="data: URL of a PNG map of changed values (centre 128×128 px, full resolution)."
+    )
+
+
+class LabSampleRunResponse(BaseModel):
+    sample_id: str
+    payload_percent: float
+    message_bytes: int
+    threshold: float
+    results: list[SampleAlgorithmResult]
+
+
+# --- Evaluation Lab: sample messages in the user's image ---------------------------------------------

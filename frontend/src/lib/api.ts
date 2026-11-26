@@ -196,6 +196,45 @@ export interface LabResults {
   quality: QualityRow[];
 }
 
+// --- Evaluation Lab: live sample run ---
+
+export type SampleTexture = "smooth" | "medium" | "textured";
+
+export interface LabSample {
+  id: string;
+  title: string;
+  texture: SampleTexture;
+  texture_complexity: number;
+  image_url: string;
+}
+
+export interface LabSamples {
+  samples: LabSample[];
+  source: string;
+}
+
+export interface SampleAlgorithmResult {
+  algorithm: EmbeddingAlgorithm;
+  predicted_probability: number;
+  predicted_level: RiskLevel;
+  actual_probability: number;
+  is_detected: boolean;
+  psnr_db: number | null;
+  ssim: number;
+  changed_values: number;
+  changed_share: number;
+  stego_preview: string;
+  change_map: string;
+}
+
+export interface LabSampleRun {
+  sample_id: string;
+  payload_percent: number;
+  message_bytes: number;
+  threshold: number;
+  results: SampleAlgorithmResult[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -239,6 +278,15 @@ export const api = {
   },
 
   labResults: (signal?: AbortSignal) => getJson<LabResults>("/lab/results", signal),
+
+  labSamples: (signal?: AbortSignal) => getJson<LabSamples>("/lab/samples", signal),
+
+  labRunSample: (sampleId: string, payloadPercent: number, signal?: AbortSignal) =>
+    postJson<LabSampleRun>(
+      `/lab/samples/${encodeURIComponent(sampleId)}/run`,
+      { payload_percent: payloadPercent },
+      signal,
+    ),
 
   labQuality: (image: File, signal?: AbortSignal) => postFormJson<LabQuality>("/lab/quality", { image }, signal),
 

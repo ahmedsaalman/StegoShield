@@ -11,6 +11,15 @@ The back end for the Phase 6 Evaluation Lab page is done (`api/routes/lab.py`, `
 | POST | `/api/lab/robustness` | same | ~0.2 s | no |
 | POST | `/api/lab/attacks` | same | ~0.5 s | no |
 | POST | `/api/lab/detector-comparison` | same | ~4–5 s | **yes** (503 otherwise) |
+| GET | `/api/lab/samples` | none | instant | no |
+| GET | `/api/lab/samples/{id}/image` | none | instant | no |
+| POST | `/api/lab/samples/{id}/run` | JSON `{"payload_percent": 1–50}` | ~1.5–2 s per sample | **yes** (503 otherwise) |
+
+### Live sample run
+
+The 8 built-in samples are 512×512 crops of DIV2K photos from the detector's **held-out** split (`api/samples/`, listed in `manifest.json` with their source cover id; `tests/test_lab_samples.py` checks they are held out). They are ordered smooth → textured (3 smooth, 3 medium, 2 textured by the held-out set's own thirds). DIV2K is licensed for academic research.
+
+For one sample and one payload share, `run` returns, for **each algorithm**: the pre-flight prediction for that size (`PreflightChecker.predict_risk`), the detector's score on a **real** format-v2 stego image (public-key mode, fresh keys, seeded message bytes), PSNR/SSIM, the number and share of changed colour values, a 256 px JPEG preview of the stego image and a PNG map of the **centre 128×128 pixels at full resolution** (one dot = one changed value, coloured by channel). Fresh keys mean detector scores vary by a few points between runs; photos near the 72 % threshold can flip. The page runs the samples two at a time and updates as each one finishes (~10 s for all 8).
 
 Uploads go through the same `load_cover_image` as `/api/detect` (PNG, JPEG, BMP, WebP; general size limits), plus a Lab-only cap of **1,048,576 pixels** (e.g. 1024×1024), because each demo processes the image many times.
 
@@ -50,6 +59,7 @@ Rates and probabilities are 0–1: format probabilities with `formatProbability`
 | `image_too_large` | 413 | over the general limit **or** the 1 MP Lab cap | existing title; the message says what to do |
 | `detector_unavailable` | 503 | detector comparison without a model | existing title; show as the "not ready" state for that demo only |
 | `lab_results_unavailable` | 503 | `/api/lab/results` when the result CSVs are missing | **new code**: add a title in `ErrorAlert.tsx`, e.g. "Saved results not available" |
+| `unknown_sample` | 404 | a sample id not in the manifest | the page only uses ids from `/api/lab/samples` |
 | `invalid_image`, `unsupported_format`, `validation_error` | 4xx | as for `/api/detect` | existing |
 
 ## What each demo should convey (copy hints)

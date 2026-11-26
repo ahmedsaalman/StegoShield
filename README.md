@@ -166,6 +166,9 @@ All endpoints live under `/api`; interactive documentation is at `/api/docs`. Up
 | POST | `/api/lab/robustness` | Evaluation Lab: does a hidden message survive PNG re-save, JPEG q90/q75, 50 % resize |
 | POST | `/api/lab/attacks` | Evaluation Lab: wrong keys, bit flips, cropping, signature scan against a real message |
 | POST | `/api/lab/detector-comparison` | Evaluation Lab: detector score clean vs replacement vs matching at 5–50 % |
+| GET | `/api/lab/samples` | Evaluation Lab: the 8 built-in sample photos (held-out DIV2K crops in `api/samples/`) |
+| GET | `/api/lab/samples/{id}/image` | Evaluation Lab: one sample photo (PNG) |
+| POST | `/api/lab/samples/{id}/run` | Evaluation Lab live sample run: hide `payload_percent` (1–50) of the sample with both algorithms; pre-flight prediction vs detector result, PSNR/SSIM, changed values, previews |
 
 Every error has the same shape: `{"error": {"code", "message", "field?", "request_id"}}`. A wrong key, a modified image and "no message" all return the same `no_message_found` error on purpose.
 

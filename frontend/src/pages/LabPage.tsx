@@ -25,6 +25,7 @@ import { LAB_OUTCOME_PRESENTATION, RISK_PRESENTATION } from "../lib/presentation
 import { COVER_ACCEPT, useCoverImage } from "../lib/useCoverImage";
 import { type Request, type RequestState, useRequest } from "../lib/useRequest";
 import { useAppState } from "../state/AppState";
+import { LabSampleRun } from "./LabSampleRun";
 
 /** Each demo processes the image many times, so the API caps Lab uploads at 1 MP. */
 const LAB_MAX_PIXELS = 1_048_576;
@@ -83,14 +84,15 @@ export function LabPage() {
         eyebrow="Evaluate"
         art={<ToolArt name="lab" isAmbient />}
         title="Evaluation Lab"
-        description="Check the claims yourself: saved results from images the detector never trained on, and four live experiments you can run on your own image."
+        description="Check the claims yourself: watch a payload get hidden in eight built-in photos and see what each one is exposed to, browse the saved held-out results, or run the experiments on your own image."
       />
       <PageBody>
         <div className="stack-lg">
+          <LabSampleRun isDetectorMissing={isDetectorMissing} />
           <SavedResults state={results.state} />
 
           <Card
-            step="Live demos"
+            step="Your own image"
             title="Run the experiments on your image"
             description="The same experiment code that produced the saved results, run on one image. Nothing is stored."
             footer={

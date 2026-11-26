@@ -2004,6 +2004,101 @@ pre,
   white-space: nowrap;
 }
 
+/* ---------- Evaluation Lab: live sample run ---------- */
+
+.sample-list {
+  display: grid;
+  gap: var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.sample-card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+
+.sample-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.sample-card__header .tag {
+  margin-left: 0;
+}
+
+.sample-card__status {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+
+.sample-card__images {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .sample-card {
+    padding: var(--space-4);
+  }
+
+  .sample-card__images {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sample-card__images figure {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sample-card__images .image-frame {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+}
+
+.sample-card__images img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
+
+.sample-card__images figcaption {
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+
+.image-frame--map {
+  background: #000000;
+}
+
+.image-frame--map img {
+  image-rendering: pixelated;
+}
+
+.sample-card__placeholder {
+  color: var(--fg-subtle);
+}
+
+.verdict-text {
+  white-space: nowrap;
+}
+
+.verdict-text--flagged {
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+
 /* ---------- Image activity overlays ---------- */
 
 .image-frame--overlay,
@@ -2539,6 +2634,11 @@ pre,
 
   .outcome-list li {
     animation: rise 400ms var(--ease-out) both;
+  }
+
+  .sample-card [role="status"] > *,
+  .sample-card__images img {
+    animation: fade-in 450ms ease both;
   }
 
   .outcome-list li:nth-child(2) {

@@ -126,7 +126,7 @@ describe("LabPage", () => {
     await uploadCover(user);
     await user.click(await screen.findByRole("button", { name: "Run all demos" }));
 
-    expect(await screen.findByText(/detector isn't installed/)).toBeInTheDocument();
+    expect(await screen.findByText(/so this demo is unavailable/)).toBeInTheDocument();
     expect(await screen.findByText("Reveal with the wrong password")).toBeInTheDocument();
     expect(calls).not.toContain("/api/lab/detector-comparison");
   });

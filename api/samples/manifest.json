@@ -1,0 +1,66 @@
+{
+  "description": "Built-in Evaluation Lab samples: 512x512 crops of DIV2K photos from the detector's held-out test split (never trained on). Ordered smooth to textured.",
+  "source": "DIV2K (Agustsson & Timofte, NTIRE 2017), https://data.vision.ee.ethz.ch/cvl/DIV2K/ - academic research use.",
+  "texture_bounds": {
+    "smooth_below": 365.0,
+    "textured_above": 1173.3
+  },
+  "samples": [
+    {
+      "id": "01-mushrooms",
+      "title": "Mushrooms on the forest floor",
+      "source_cover_id": "0152_0",
+      "texture": "smooth",
+      "texture_complexity": 19.0
+    },
+    {
+      "id": "02-leaves",
+      "title": "Blurred leaves",
+      "source_cover_id": "0598_1",
+      "texture": "smooth",
+      "texture_complexity": 51.6
+    },
+    {
+      "id": "03-boat",
+      "title": "Boat on still water",
+      "source_cover_id": "0713_1",
+      "texture": "smooth",
+      "texture_complexity": 228.7
+    },
+    {
+      "id": "04-snowy-posts",
+      "title": "Snow on wooden posts",
+      "source_cover_id": "0219_0",
+      "texture": "medium",
+      "texture_complexity": 418.3
+    },
+    {
+      "id": "05-clear-water",
+      "title": "Clear shallow water",
+      "source_cover_id": "0835_4",
+      "texture": "medium",
+      "texture_complexity": 634.6
+    },
+    {
+      "id": "06-tiger",
+      "title": "Tiger stripes",
+      "source_cover_id": "0739_0",
+      "texture": "medium",
+      "texture_complexity": 781.0
+    },
+    {
+      "id": "07-river-gorge",
+      "title": "River gorge with a bridge",
+      "source_cover_id": "0243_0",
+      "texture": "textured",
+      "texture_complexity": 1879.1
+    },
+    {
+      "id": "08-peacock",
+      "title": "Peacock feathers",
+      "source_cover_id": "0063_1",
+      "texture": "textured",
+      "texture_complexity": 4433.6
+    }
+  ]
+}
