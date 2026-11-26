@@ -15,4 +15,3 @@ frontend/dist
 *.pdf
 *.xlsx
 .DS_Store
-deploy/vm/.env

@@ -60,6 +60,3 @@ data/features/
 # Front end
 frontend/node_modules/
 frontend/dist/
-
-# Server-only settings written by deploy/vm/setup.sh
-deploy/vm/.env

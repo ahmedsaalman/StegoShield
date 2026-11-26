@@ -270,8 +270,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] `frontend/`: Home, Hide, Reveal, Pre-flight, Detect and Keys pages; responsive to 390 px; light/dark themes; every page handles empty, loading, success, error and "detector not installed" states.
 - [x] Detect page shows the trained detector's probability and top contributing features; API returns 503 with a reason when the model is missing or mismatched.
 - [x] Warn on JPEG covers; reject JPEG/WebP on reveal with an explanation; enforce size limits client- and server-side.
-- [x] Packaging: `Dockerfile` (single image), `Makefile` (`dev-api`, `dev-web`, `serve`, `check`).
-- [x] **Hosted demo (scope change, 27 Nov 2026):** the examiner asked for a link. The app runs on a Google Cloud e2-micro always-free VM (`deploy/vm/`: Docker Compose + Caddy for HTTPS). `.github/workflows/deploy.yml` tests each push to `main`, builds the image into ghcr.io, and redeploys the VM over SSH. Hugging Face Spaces was tried first, but Docker Spaces now need a paid PRO plan. There are still no accounts and no storage.
+- [x] Packaging: `Dockerfile` (single image), `Makefile` (`dev-api`, `dev-web`, `serve`, `check`). CI: `.github/workflows/ci.yml` runs lint, all tests and the production build on every push.
 - [x] Pre-flight page uses the Phase 4 detector-in-the-loop result (only `api/analysis.py` changed; the response shape is unchanged). Without a detector, `/api/preflight` now returns 503 `detector_unavailable`.
 - [x] **Evaluation Lab API:** `/api/lab/{quality,robustness,attacks,detector-comparison}` run the `experiments/` functions on an uploaded image (≤ 1024×1024 px), and `/api/lab/results` serves the saved held-out results. `api/lab.py` is the only adapter; there's no duplicated logic. `experiments/attacks.py` was added as the importable attack demo.
 - [x] **Evaluation Lab page** (front end): consumes the endpoints above. Built by the front-end session in the new design system; contract in [evaluation_lab_api.md](evaluation_lab_api.md). *`frontend/src/pages/LabPage.tsx` (`/lab`, "Lab" tab): saved held-out results (headline stats, detector AUC by payload, pre-flight validity, robustness, quality) and four live demos on an uploaded image (1 MP cap checked in the browser), each with its own empty/loading/error/not-ready state. 4 Vitest tests; verified in headless Chrome against the live server (all four demos in ~3 s, light and dark).*
@@ -285,9 +284,9 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Wrong password and tampered image show a clear message, not a stack trace.
 - [x] Risk level is never conveyed by colour alone (label + icon + percentage).
 - [x] `pytest`, `ruff`, `npm test`, `npm run lint` (incl. jsx-a11y) and `npm run typecheck` all pass.
-- [ ] `docker build` succeeds and the container passes its health check (the first build on the VM covers this).
+- [ ] `docker build` succeeds and the container passes its health check.
 
-**Not in this phase:** user accounts, a database, production hosting (the Space is an assessment demo only).
+**Not in this phase:** user accounts, a database, public deployment (out of scope).
 
 ---
 

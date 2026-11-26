@@ -120,33 +120,6 @@ docker run -p 8000:8000 stegoshield
 ```
 If `models/detector.joblib` is missing or was trained on a different feature set, the app still runs; `/api/meta` reports why and the Detect page explains that scanning is unavailable.
 
-**Hosted demo (Google Cloud e2-micro, always free):** the examiners' link. GitHub Actions builds the image into `ghcr.io/ahmedsaalman/stegoshield`. A small VM pulls it and runs it behind [Caddy](https://caddyserver.com), which fetches and renews a Let's Encrypt certificate. The free `<ip-with-dashes>.sslip.io` hostname means no domain is needed. The files are in `deploy/vm/` (`compose.yaml`, `Caddyfile`, `setup.sh`, `update.sh`) and work on any Ubuntu/Debian VM, Oracle included.
-
-The defaults fit the e2-micro's 1 GB of RAM: one worker, one heavy job at a time, uploads up to 1 megapixel, and a 2 GB swap file. Raise them in `deploy/vm/.env` on a bigger VM (see the comment at the top of `compose.yaml`).
-
-One-time setup:
-1. **Image:** push to `main`. The *Deploy* workflow builds and publishes the image; its deploy job is skipped until step 5. On GitHub, open the repository's **Packages** → `stegoshield` → *Package settings* → *Change visibility* → **Public**, so the VM can pull without credentials.
-2. **Google Cloud console:** create a project with billing (new accounts get trial credit), then go to *Compute Engine → VM instances → Create instance*:
-   - region `us-central1`, `us-east1` or `us-west1` (only these are free);
-   - machine type **e2-micro**;
-   - boot disk **Ubuntu 24.04 LTS (x86/64)**, **Standard persistent disk** (the default "Balanced" is *not* free), 30 GB;
-   - firewall: tick **Allow HTTP** and **Allow HTTPS**.
-3. **Deploy key, on your machine:** `ssh-keygen -t ed25519 -N "" -C stegoshield-deploy -f ~/.ssh/stegoshield_deploy`
-4. **On the VM** (the console's *SSH* button):
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/ahmedsaalman/StegoShield/main/deploy/vm/setup.sh -o setup.sh
-   DEPLOY_PUBLIC_KEY="<contents of ~/.ssh/stegoshield_deploy.pub>" bash setup.sh
-   ```
-   It adds swap, installs Docker, pulls and starts the app, then prints the live URL and your VM login name.
-5. **GitHub** → Settings → Secrets and variables → Actions:
-   - variables `VM_HOST` = the VM's external IP, and `VM_USER` = the login name setup.sh printed;
-   - secrets `VM_SSH_KEY` = contents of `~/.ssh/stegoshield_deploy`, and `VM_KNOWN_HOSTS` = output of `ssh-keyscan -t ed25519 <ip>`.
-
-From then on, every push to `main` that touches the app goes through three steps: tests → image `:<sha>` → SSH to the VM. `update.sh` checks out that commit, pulls that exact image, and waits for the container's health check. The deploy key can only run `update.sh`, because `authorized_keys` gives it a forced command, and its only input is a 40-character commit sha. To redeploy without a push, use Actions → *Deploy* → *Run workflow*.
-- The app port (8000) is never published; only Caddy reaches it. That's why `FORWARDED_ALLOW_IPS=*` is safe there: Caddy overwrites any `X-Forwarded-For` a client sends, so rate limits apply per visitor. HSTS is on.
-- Costs to watch: only 1 GB of outbound traffic a month is free. Recent reports also say an in-use external IPv4 address costs about $0.005/hour, which the trial credit covers.
-- Visitors' passwords and private keys reach the server. It stores nothing, but treat the demo as a demo: use test secrets.
-
 ### 6. Build the Detector Dataset
 ```bash
 python -m ml.prepare_covers   # downloads DIV2K valid + train if missing (~4 GB), cuts 2,100 covers into data/covers/
