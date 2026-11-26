@@ -44,6 +44,18 @@ describe("describeFeature", () => {
     });
   });
 
+  it("describes inter-channel colour features", () => {
+    expect(describeFeature("colour_rg_h_one")).toEqual({
+      label: "Channel-difference steps of ±1, left to right",
+      channel: "red−green",
+    });
+    expect(describeFeature("colour_gb_v_cooc_31").label).toBe("Channel-difference step pair (1, -1), top to bottom");
+    expect(describeFeature("colour_corr_v_br")).toEqual({
+      label: "Noise correlation between channels, top to bottom",
+      channel: "blue−red",
+    });
+  });
+
   it("falls back to a readable version of unknown names", () => {
     expect(describeFeature("new_feature")).toEqual({ label: "new feature", channel: null });
   });

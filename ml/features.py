@@ -14,6 +14,13 @@ Feature families (per channel):
    embedding rate. Unlike families 1-5 it is relative to the image itself, so it
    separates clean and stego images even when covers differ a lot.
 
+Image-level family (computed once across channels, not per channel):
+7. Inter-channel noise statistics. Camera noise in demosaiced photos is strongly
+   correlated across R, G and B, so channel-difference planes (R-G, G-B, B-R) are
+   smooth. Embedding changes each channel's LSBs independently, which roughens those
+   planes. This is what exposes LSB matching (+/-1), which leaves no pairs-of-values
+   or sample-pairs signature for families 2 and 6 to find.
+
 Used jointly by:
 - Defensive AI Detector (Module D)
 - Pre-Flight Risk Scorer (Module B)
@@ -64,8 +71,28 @@ CHANNEL_FEATURE_NAMES = [
     "spa_rate",
 ]
 
-# Single source of truth for feature order: "<feature>_<channel>", grouped by channel.
-FEATURE_NAMES = [f"{name}_{channel}" for channel in CHANNELS for name in CHANNEL_FEATURE_NAMES]
+COLOUR_PAIRS = ("rg", "gb", "br")
+COLOUR_AXES = ("h", "v")
+COLOUR_DIFF_CLIP = 2  # co-occurrences of differences clipped to [-2, 2]: 5 x 5 bins
+_COLOUR_BINS = 2 * COLOUR_DIFF_CLIP + 1
+
+
+def _colour_feature_names() -> list[str]:
+    names = []
+    for pair in COLOUR_PAIRS:
+        for axis in COLOUR_AXES:
+            prefix = f"colour_{pair}_{axis}"
+            names += [f"{prefix}_zero", f"{prefix}_one", f"{prefix}_two"]
+            names += [f"{prefix}_cooc_{i}{j}" for i in range(_COLOUR_BINS) for j in range(_COLOUR_BINS)]
+    names += [f"colour_corr_{axis}_{pair}" for axis in COLOUR_AXES for pair in COLOUR_PAIRS]
+    return names
+
+
+COLOUR_FEATURE_NAMES = _colour_feature_names()
+
+# Single source of truth for feature order: per-channel "<feature>_<channel>" grouped by
+# channel, then the image-level inter-channel features.
+FEATURE_NAMES = [f"{name}_{channel}" for channel in CHANNELS for name in CHANNEL_FEATURE_NAMES] + COLOUR_FEATURE_NAMES
 
 
 def extract_lsb_features(gray: np.ndarray) -> dict[str, float]:
@@ -140,8 +167,7 @@ def extract_residual_features(gray: np.ndarray) -> dict[str, float]:
         flat = arr.reshape(-1)
         mean_val = float(np.mean(flat))
         std_val = float(np.std(flat))
-        skew_val = float(stats.skew(flat)) if std_val > 1e-6 else 0.0
-        kurt_val = float(stats.kurtosis(flat)) if std_val > 1e-6 else 0.0
+        skew_val, kurt_val = _skew_and_kurtosis(flat, mean_val, std_val)
         return {
             f"{prefix}_mean": mean_val,
             f"{prefix}_std": std_val,
@@ -163,6 +189,18 @@ def extract_residual_features(gray: np.ndarray) -> dict[str, float]:
     return out
 
 
+def _skew_and_kurtosis(flat: np.ndarray, mean: float, std: float) -> tuple[float, float]:
+    """Population skewness and excess kurtosis (scipy.stats defaults), several times faster."""
+    if std <= 1e-6:
+        return 0.0, 0.0
+    centred = flat - mean
+    squared = centred * centred
+    m2 = float(np.mean(squared))
+    m3 = float(np.mean(squared * centred))
+    m4 = float(np.mean(squared * squared))
+    return m3 / m2**1.5, m4 / (m2 * m2) - 3.0
+
+
 def extract_cooccurrence_features(gray: np.ndarray, t_bound: int = 3) -> dict[str, float]:
     """Compute spatial co-occurrence transition matrix on thresholded residuals."""
     f = gray.astype(np.float64)
@@ -174,8 +212,8 @@ def extract_cooccurrence_features(gray: np.ndarray, t_bound: int = 3) -> dict[st
         d2 = dh[:, 1:].reshape(-1).astype(int) + t_bound
         num_bins = 2 * t_bound + 1
 
-        # 2D histogram transition matrix
-        cooc, _, _ = np.histogram2d(d1, d2, bins=num_bins, range=[[0, num_bins], [0, num_bins]])
+        # 2D histogram transition matrix (bincount gives the same counts as histogram2d, faster)
+        cooc = np.bincount(d1 * num_bins + d2, minlength=num_bins * num_bins).reshape(num_bins, num_bins)
         total = np.sum(cooc)
         p = (cooc / total) if total > 0 else np.full((num_bins, num_bins), 1.0 / (num_bins**2))
     else:
@@ -235,11 +273,63 @@ def extract_features(image: Image.Image) -> tuple[np.ndarray, dict[str, float]]:
         (vector ordered as FEATURE_NAMES, dict keyed by FEATURE_NAMES)
     """
     feat_dict: dict[str, float] = {}
-    for channel, plane in zip(CHANNELS, _channel_planes(image), strict=True):
+    planes = _channel_planes(image)
+    for channel, plane in zip(CHANNELS, planes, strict=True):
         for name, value in extract_channel_features(plane).items():
             feat_dict[f"{name}_{channel}"] = value
+    feat_dict.update(extract_colour_features(planes))
     vec = np.array([feat_dict[name] for name in FEATURE_NAMES], dtype=np.float64)
     return vec, feat_dict
+
+
+def extract_colour_features(planes: list[np.ndarray]) -> dict[str, float]:
+    """Inter-channel noise statistics (family 7) from the R, G and B planes.
+
+    For each channel-difference plane and axis: the share of neighbouring differences
+    equal to 0, 1 and 2 in magnitude, and the 5 x 5 co-occurrence of consecutive clipped
+    differences. Plus the correlation of first differences between channel pairs.
+    """
+    red, green, blue = (plane.astype(np.int16) for plane in planes)
+    difference_planes = {"rg": red - green, "gb": green - blue, "br": blue - red}
+    features: dict[str, float] = {}
+    for pair in COLOUR_PAIRS:
+        for axis, steps in zip(COLOUR_AXES, _axis_differences(difference_planes[pair]), strict=True):
+            features.update(_difference_statistics(steps, f"colour_{pair}_{axis}"))
+    channels = {"r": red, "g": green, "b": blue}
+    for axis, numpy_axis in zip(COLOUR_AXES, (1, 0), strict=True):
+        steps = {name: np.diff(plane, axis=numpy_axis).astype(np.float64).ravel() for name, plane in channels.items()}
+        for pair in COLOUR_PAIRS:
+            features[f"colour_corr_{axis}_{pair}"] = _correlation(steps[pair[0]], steps[pair[1]])
+    return features
+
+
+def _axis_differences(plane: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Horizontal and vertical neighbour differences of a plane."""
+    return plane[:, 1:] - plane[:, :-1], plane[1:, :] - plane[:-1, :]
+
+
+def _difference_statistics(steps: np.ndarray, prefix: str) -> dict[str, float]:
+    magnitude = np.abs(steps)
+    features = {
+        f"{prefix}_zero": float(np.mean(magnitude == 0)),
+        f"{prefix}_one": float(np.mean(magnitude == 1)),
+        f"{prefix}_two": float(np.mean(magnitude == 2)),
+    }
+    clipped = (np.clip(steps, -COLOUR_DIFF_CLIP, COLOUR_DIFF_CLIP) + COLOUR_DIFF_CLIP).astype(np.int32)
+    index = (clipped[:, :-1] * _COLOUR_BINS + clipped[:, 1:]).ravel()
+    counts = np.bincount(index, minlength=_COLOUR_BINS * _COLOUR_BINS).astype(np.float64)
+    shares = counts / max(counts.sum(), 1.0)
+    for flat_index, share in enumerate(shares):
+        i, j = divmod(flat_index, _COLOUR_BINS)
+        features[f"{prefix}_cooc_{i}{j}"] = float(share)
+    return features
+
+
+def _correlation(a: np.ndarray, b: np.ndarray) -> float:
+    std_a, std_b = a.std(), b.std()
+    if std_a == 0 or std_b == 0:
+        return 0.0
+    return float(np.mean((a - a.mean()) * (b - b.mean())) / (std_a * std_b))
 
 
 def extract_sample_pairs_features(plane: np.ndarray) -> dict[str, float]:

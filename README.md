@@ -122,16 +122,16 @@ If `models/detector.joblib` is missing or was trained on a different feature set
 
 ### 6. Build the Detector Dataset
 ```bash
-python -m ml.prepare_covers   # downloads DIV2K validation set if missing, cuts 500 covers (5 per photo) into data/covers/
-python -m ml.dataset          # 500 clean + 8,000 stego rows -> data/features/features.csv (~17 min on 7 cores)
+python -m ml.prepare_covers   # downloads DIV2K valid + train if missing (~4 GB), cuts 2,100 covers into data/covers/
+python -m ml.dataset          # 2,100 clean + 33,600 stego rows x 258 features -> data/features/features.csv (~65 min on 7 cores)
 ```
-Both scripts take `--seed` (default 2026); the same seed gives a byte-identical CSV. Data folders are git-ignored.
+Covers come from 900 DIV2K photos: the 100 validation photos (5 crops each) and the 800 training photos (2 crops each). `--sets valid` rebuilds only the original 500 covers. Both scripts take `--seed` (default 2026); the same seed gives a byte-identical CSV. Data folders are git-ignored.
 
 ### 7. Train the Detector
 ```bash
-python -m ml.train_detector   # -> models/detector.joblib + models/detector_metrics.json (~1 min)
+python -m ml.train_detector   # -> models/detector.joblib + models/detector_metrics.json (~20 min)
 ```
-Splits train/test by source photo (80/20), so no photo's crops appear on both sides, then fits a calibrated Random Forest. `models/detector_metrics.json` has held-out ROC-AUC overall and per ratio, layout and algorithm. The trained model is committed, so the app works without this step.
+Splits train/test by source photo (80/20), so no photo's crops appear on both sides, then picks the forest's per-split feature share and the calibration method by grouped cross-validation on the training split, and fits a calibrated Random Forest. `models/detector_metrics.json` has held-out ROC-AUC overall and per ratio, layout and algorithm. The trained model is committed, so the app works without this step.
 
 ### 8. Run the Experiments
 ```bash

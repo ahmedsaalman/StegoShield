@@ -46,12 +46,17 @@ def noise_cover(size: int = 64, seed: int = 0) -> Image.Image:
 
 
 def photo_like_cover(size: int = 128, seed: int = 0) -> Image.Image:
-    """Smooth gradients + blurred texture + mild sensor noise: close enough to a photo for the real detector."""
+    """Smooth gradients + blurred texture + mild sensor noise: close enough to a photo for the real detector.
+
+    Texture and most of the noise are shared by R, G and B, as in a demosaiced camera photo.
+    Fully independent per-channel noise looks like embedding to the inter-channel features.
+    """
     rng = np.random.default_rng(seed)
     xx, yy = np.meshgrid(np.linspace(0, 1, size), np.linspace(0, 1, size))
     base = np.stack([80 + 90 * xx + 20 * np.sin(9 * yy), 60 + 70 * yy + 15 * np.cos(7 * xx), 100 + 50 * xx * yy], -1)
-    texture = gaussian_filter(rng.normal(0, 25, base.shape), (2, 2, 0))
-    return Image.fromarray(np.clip(base + texture + rng.normal(0, 2, base.shape), 0, 255).astype(np.uint8))
+    shared = gaussian_filter(rng.normal(0, 25, (size, size)), 2) + rng.normal(0, 2, (size, size))
+    own_noise = rng.normal(0, 0.4, base.shape)
+    return Image.fromarray(np.clip(base + shared[..., None] + own_noise, 0, 255).astype(np.uint8))
 
 
 @pytest.mark.parametrize(

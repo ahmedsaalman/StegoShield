@@ -6,8 +6,9 @@ Steps:
 2. Balance classes with sample weights. Each cover has 1 clean and 16 stego rows,
    so clean rows get weight 16. The calibrated output then reads as P(stego) at
    equal prior odds, which is what the pre-flight risk score needs.
-3. Choose sigmoid or isotonic calibration on grouped validation folds inside the
-   training split (Brier score). The test split is never used for any choice.
+3. Choose the forest's per-split feature share (max_features) by out-of-fold ROC-AUC,
+   and sigmoid or isotonic calibration by Brier score, both on grouped validation
+   folds inside the training split. The test split is never used for any choice.
 4. Fit the final CalibratedClassifierCV (one forest, ensemble=False, to keep the
    artifact small) and report held-out metrics overall and per slice.
 
@@ -49,7 +50,11 @@ TOP_IMPORTANCES = 15
 CALIBRATION_METHODS = ("sigmoid", "isotonic")
 SLICE_COLUMNS = ("ratio", "layout", "algorithm")
 GROUP_COLUMN = "source_id"
-FOREST_PARAMS = {"n_estimators": 300, "min_samples_leaf": 2, "max_features": "sqrt", "n_jobs": -1}
+FOREST_PARAMS = {"n_estimators": 300, "min_samples_leaf": 2, "n_jobs": -1}
+# With 258 features, "sqrt" samples ~16 per split and can starve strong-but-few features
+# (Sample Pairs); larger shares are tried too. Chosen on training folds only.
+MAX_FEATURES_CANDIDATES: tuple[str | float, ...] = ("sqrt", 0.2, 0.4)
+SELECTION_TREES = 150
 
 
 @dataclass(frozen=True)
@@ -103,11 +108,18 @@ def balanced_sample_weights(labels: pd.Series) -> np.ndarray:
 
 
 def train_detector(train: pd.DataFrame, seed: int = DEFAULT_SEED, forest_params: dict | None = None) -> dict:
-    """Fit the calibrated forest on the training split and return the model artifact."""
-    forest_params = forest_params or FOREST_PARAMS
+    """Fit the calibrated forest on the training split and return the model artifact.
+
+    With the default parameters, max_features is chosen by grouped CV on the training split.
+    Passing forest_params uses them as given (used by fast tests).
+    """
     features, labels = train[FEATURE_NAMES].to_numpy(), train["label"]
     weights = balanced_sample_weights(labels)
     folds = list(GroupKFold(n_splits=CV_FOLDS).split(features, labels, groups=train[GROUP_COLUMN]))
+    selection: dict = {}
+    if forest_params is None:
+        selection = choose_max_features(features, labels.to_numpy(), weights, folds, seed)
+        forest_params = FOREST_PARAMS | {"max_features": selection["chosen"]}
 
     method = choose_calibration_method(features, labels.to_numpy(), weights, folds, _forest(seed, forest_params))
     model = CalibratedClassifierCV(_forest(seed, forest_params), method=method, cv=folds, ensemble=False)
@@ -121,10 +133,25 @@ def train_detector(train: pd.DataFrame, seed: int = DEFAULT_SEED, forest_params:
         "clean_feature_mean": clean.mean().to_numpy().tolist(),
         "clean_feature_std": clean.std().replace(0, 1).to_numpy().tolist(),
         "calibration_method": method,
+        "forest_params": {key: value for key, value in forest_params.items() if key != "n_jobs"},
+        "max_features_selection": selection,
         "format_version": ARTIFACT_FORMAT_VERSION,
         "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "seed": seed,
     }
+
+
+def choose_max_features(features: np.ndarray, labels: np.ndarray, weights: np.ndarray, folds: list, seed: int) -> dict:
+    """Out-of-fold ROC-AUC on the training split for each max_features candidate, and the best one."""
+    scores: dict[str, float] = {}
+    for candidate in MAX_FEATURES_CANDIDATES:
+        params = FOREST_PARAMS | {"max_features": candidate, "n_estimators": SELECTION_TREES}
+        out_of_fold = cross_val_predict(
+            _forest(seed, params), features, labels, cv=folds, method="predict_proba", params={"sample_weight": weights}
+        )[:, 1]
+        scores[str(candidate)] = float(roc_auc_score(labels, out_of_fold, sample_weight=weights))
+    best = max(MAX_FEATURES_CANDIDATES, key=lambda candidate: scores[str(candidate)])
+    return {"chosen": best, "validation_roc_auc": scores}
 
 
 def choose_calibration_method(
@@ -147,6 +174,8 @@ def evaluate_detector(artifact: dict, test: pd.DataFrame) -> dict:
         "per_slice": _slice_metrics(scored),
         "top_feature_importances": top_importances(artifact),
         "calibration_method": artifact["calibration_method"],
+        "forest_params": artifact.get("forest_params", {}),
+        "max_features_selection": artifact.get("max_features_selection", {}),
         "decision_threshold": DECISION_THRESHOLD,
         "n_test_rows": len(test),
     }

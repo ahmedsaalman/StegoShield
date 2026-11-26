@@ -37,7 +37,31 @@ export interface FeatureDescription {
   channel: string | null;
 }
 
+const CHANNEL_PAIRS: Record<string, string> = { rg: "red−green", gb: "green−blue", br: "blue−red" };
+const AXES: Record<string, string> = { h: "left to right", v: "top to bottom" };
+const STEP_SIZES: Record<string, string> = { zero: "steps of 0", one: "steps of ±1", two: "steps of ±2" };
+const COOC_OFFSET = 2;
+
+/** Inter-channel features: colour_<pair>_<axis>_<stat> and colour_corr_<axis>_<pair>. */
+function describeColourFeature(featureName: string): FeatureDescription | null {
+  const correlation = /^colour_corr_([hv])_(rg|gb|br)$/.exec(featureName);
+  if (correlation) {
+    const [, axis = "h", pair = "rg"] = correlation;
+    return { label: `Noise correlation between channels, ${AXES[axis]}`, channel: CHANNEL_PAIRS[pair] ?? null };
+  }
+  const difference = /^colour_(rg|gb|br)_([hv])_(zero|one|two|cooc_(\d)(\d))$/.exec(featureName);
+  if (!difference) return null;
+  const [, pair = "rg", axis = "h", stat = "zero", first, second] = difference;
+  const what =
+    first !== undefined && second !== undefined
+      ? `step pair (${Number(first) - COOC_OFFSET}, ${Number(second) - COOC_OFFSET})`
+      : STEP_SIZES[stat];
+  return { label: `Channel-difference ${what}, ${AXES[axis]}`, channel: CHANNEL_PAIRS[pair] ?? null };
+}
+
 export function describeFeature(featureName: string): FeatureDescription {
+  const colour = describeColourFeature(featureName);
+  if (colour) return colour;
   const match = /^(.*)_([rgb])$/.exec(featureName);
   const baseName = match?.[1] ?? featureName;
   const channelCode = match?.[2];

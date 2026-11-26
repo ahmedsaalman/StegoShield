@@ -7,9 +7,15 @@ resampling would smooth away the natural pixel noise that real covers have.
 Cover files are named ``<source_id>_<k>.png`` (e.g. ``0801_2.png``). The source
 id is kept so that train/test splits can group all crops of one photo together.
 
+Two DIV2K sets are used, with disjoint photo ids, so source ids stay unique:
+- valid: 100 photos (0801-0900), 5 crops each = 500 covers   (~430 MB download)
+- train: 800 photos (0001-0800), 2 crops each = 1,600 covers (~3.5 GB download)
+More source photos matter more than more crops of the same photo: the detector is
+split and evaluated by source photo.
+
 Usage:
-    python -m ml.prepare_covers                     # uses data/raw/div2k, downloads if missing
-    python -m ml.prepare_covers --crops-per-source 5 --seed 2026
+    python -m ml.prepare_covers                     # both sets; downloads whatever is missing
+    python -m ml.prepare_covers --sets valid        # only the original 500 covers
 """
 
 from __future__ import annotations
@@ -18,27 +24,52 @@ import argparse
 import math
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-DIV2K_VALID_URL = "https://data.vision.ee.ethz.ch/cvl/DIV2K/DIV2K_valid_HR.zip"
+DIV2K_BASE_URL = "https://data.vision.ee.ethz.ch/cvl/DIV2K"
 DEFAULT_RAW_DIR = Path("data/raw/div2k")
-DEFAULT_SOURCE_DIR = DEFAULT_RAW_DIR / "DIV2K_valid_HR"
 DEFAULT_COVER_DIR = Path("data/covers")
 COVER_SIZE_PX = 512
 CROPS_PER_SOURCE = 5
 DEFAULT_SEED = 2026
 
 
+@dataclass(frozen=True)
+class SourceSet:
+    """One DIV2K download: where it lives, how many crops to cut per photo, and its seed offset."""
+
+    archive: str
+    folder: str
+    crops_per_source: int
+    seed_offset: int
+    size_note: str
+
+
+SOURCE_SETS = {
+    "valid": SourceSet("DIV2K_valid_HR.zip", "DIV2K_valid_HR", CROPS_PER_SOURCE, 0, "~430 MB"),
+    "train": SourceSet("DIV2K_train_HR.zip", "DIV2K_train_HR", 2, 1, "~3.5 GB"),
+}
+DEFAULT_SETS = ("valid", "train")
+
+
 def main() -> None:
     """Command-line entry point."""
     args = _parse_args()
-    if not args.source.is_dir():
-        download_div2k(args.source.parent)
-    written = prepare_covers(args.source, args.out, args.crops_per_source, args.size, args.seed)
-    print(f"[+] Wrote {len(written)} covers to {args.out} (seed={args.seed})")
+    total = 0
+    for name in args.sets:
+        source_set = SOURCE_SETS[name]
+        source_dir = args.raw / source_set.folder
+        if not source_dir.is_dir():
+            download_div2k(args.raw, source_set)
+        seed = args.seed + source_set.seed_offset
+        written = prepare_covers(source_dir, args.out, source_set.crops_per_source, args.size, seed)
+        print(f"[+] {name}: wrote {len(written)} covers to {args.out} (seed={seed})")
+        total += len(written)
+    print(f"[+] {total} covers in total")
 
 
 def prepare_covers(
@@ -100,22 +131,23 @@ def _axis_positions(length: int, size: int) -> list[int]:
     return sorted({round(p) for p in np.linspace(0, length - size, steps)})
 
 
-def download_div2k(raw_dir: Path) -> None:
-    """Download and unzip the DIV2K validation set (100 photos, ~430 MB) into raw_dir."""
+def download_div2k(raw_dir: Path, source_set: SourceSet) -> None:
+    """Download (if needed) and unzip one DIV2K set into raw_dir."""
     raw_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = raw_dir / "DIV2K_valid_HR.zip"
+    zip_path = raw_dir / source_set.archive
     if not zip_path.exists():
-        print(f"[*] Downloading {DIV2K_VALID_URL} (~430 MB)...")
-        urllib.request.urlretrieve(DIV2K_VALID_URL, zip_path)
+        url = f"{DIV2K_BASE_URL}/{source_set.archive}"
+        print(f"[*] Downloading {url} ({source_set.size_note})...")
+        urllib.request.urlretrieve(url, zip_path)
     with zipfile.ZipFile(zip_path) as archive:
         archive.extractall(raw_dir)
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Cut DIV2K photos into 512x512 PNG covers.")
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE_DIR, help="Folder of source PNG photos")
+    parser.add_argument("--sets", nargs="+", choices=sorted(SOURCE_SETS), default=list(DEFAULT_SETS))
+    parser.add_argument("--raw", type=Path, default=DEFAULT_RAW_DIR, help="Folder holding the DIV2K downloads")
     parser.add_argument("--out", type=Path, default=DEFAULT_COVER_DIR, help="Output folder for covers")
-    parser.add_argument("--crops-per-source", type=int, default=CROPS_PER_SOURCE)
     parser.add_argument("--size", type=int, default=COVER_SIZE_PX, help="Crop side length in pixels")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     return parser.parse_args()

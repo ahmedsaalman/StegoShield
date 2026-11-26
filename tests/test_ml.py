@@ -1,7 +1,7 @@
 """Unit tests for the ML modules: features and detector (pre-flight risk is in test_risk.py).
 
 Verifies:
-- Feature extraction returns every per-channel feature without NaNs or Infs.
+- Feature extraction returns every per-channel and inter-channel feature without NaNs or Infs.
 - StegoDetector loads a trained artifact, rejects mismatched ones, and explains its score.
 """
 
@@ -11,10 +11,12 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from core.embed import embed_payload
 from ml.detector import DetectorNotTrainedError, ModelMismatchError, StegoDetector
 from ml.features import (
     CHANNEL_FEATURE_NAMES,
     CHANNELS,
+    COLOUR_FEATURE_NAMES,
     FEATURE_NAMES,
     extract_features,
     extract_sample_pairs_features,
@@ -29,6 +31,16 @@ def create_smooth_image(width=128, height=128) -> Image.Image:
     xx, yy = np.meshgrid(x, y)
     arr = np.stack([xx, yy, ((xx.astype(int) + yy.astype(int)) // 2).astype(np.uint8)], axis=-1)
     return Image.fromarray(arr)
+
+
+def create_photo_like_image(size=128, seed=5) -> Image.Image:
+    """Smooth scene plus mild noise shared by all channels, like a demosaiced camera photo."""
+    rng = np.random.default_rng(seed)
+    x = np.linspace(0, 6, size)
+    scene = 120 + 50 * np.sin(x)[None, :] * np.cos(x)[:, None]
+    shared_noise = rng.normal(0, 1.5, size=(size, size))
+    channels = [scene + shared_noise + offset for offset in (8, 0, -10)]
+    return Image.fromarray(np.clip(np.stack(channels, axis=-1), 0, 255).round().astype(np.uint8))
 
 
 def create_textured_image(width=128, height=128) -> Image.Image:
@@ -94,10 +106,38 @@ def test_model_with_unknown_artifact_version_is_rejected(tiny_artifact, tmp_path
         StegoDetector(path)
 
 
-def test_feature_names_are_per_channel():
-    assert len(FEATURE_NAMES) == len(CHANNEL_FEATURE_NAMES) * len(CHANNELS)
+def test_feature_names_are_per_channel_then_inter_channel():
+    assert len(FEATURE_NAMES) == len(CHANNEL_FEATURE_NAMES) * len(CHANNELS) + len(COLOUR_FEATURE_NAMES)
     assert len(set(FEATURE_NAMES)) == len(FEATURE_NAMES)
     assert FEATURE_NAMES[0] == f"{CHANNEL_FEATURE_NAMES[0]}_r"
+    assert FEATURE_NAMES[-len(COLOUR_FEATURE_NAMES) :] == COLOUR_FEATURE_NAMES
+
+
+def test_grey_image_has_flat_channel_difference_planes():
+    _, features = extract_features(create_smooth_image(64, 64).convert("L"))
+
+    assert features["colour_rg_h_zero"] == 1.0
+    assert features["colour_gb_v_one"] == 0.0
+
+
+def test_colour_cooccurrence_shares_sum_to_one():
+    _, features = extract_features(create_photo_like_image())
+
+    shares = [value for name, value in features.items() if name.startswith("colour_rg_h_cooc_")]
+    assert sum(shares) == pytest.approx(1.0)
+
+
+def test_lsb_matching_roughens_channel_difference_planes():
+    """+/-1 embedding is independent per channel, so it breaks the cross-channel noise correlation."""
+    cover = create_photo_like_image()
+    payload = np.random.default_rng(1).bytes(cover.width * cover.height * 3 // 16)
+    stego = embed_payload(cover, payload, perm_key=b"k" * 32, mode="pseudorandom", algorithm="matching")
+
+    _, clean = extract_features(cover)
+    _, embedded = extract_features(stego)
+
+    assert embedded["colour_rg_h_zero"] < clean["colour_rg_h_zero"]
+    assert embedded["colour_corr_h_rg"] < clean["colour_corr_h_rg"]
 
 
 @pytest.mark.parametrize("mode", ["RGB", "RGBA", "L"])
