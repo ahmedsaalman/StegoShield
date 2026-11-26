@@ -22,3 +22,7 @@ addopts = "-m 'not slow'"
 markers = [
     "slow: long-running tests, excluded by default (run with: pytest -m slow)",
 ]
+filterwarnings = [
+    # Starlette's TestClient now suggests the httpx2 package; httpx stays pinned until that is vetted.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]

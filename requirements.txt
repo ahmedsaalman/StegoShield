@@ -14,7 +14,12 @@ scikit-learn==1.9.1
 joblib==1.6.0
 pandas==3.1.1
 
-# Web Dashboard
+# Web API (api/)
+fastapi==0.165.0
+uvicorn==0.54.0
+python-multipart==0.0.34
+
+# Legacy Streamlit dashboard (app.py), replaced by api/ + frontend/
 streamlit==1.67.0
 
 # Visualization & Evaluation

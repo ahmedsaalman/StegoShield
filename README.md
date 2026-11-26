@@ -2,7 +2,7 @@
 
 > **A smart web platform for encrypted steganography and AI-based steganalysis.**
 
-StegoShield combines authenticated cryptography (**AES-256-GCM**, **PBKDF2**, and **X25519 ECDH**), keyed pseudorandom LSB steganography, a pre-flight cover image risk and capacity evaluator, and an AI-driven steganalysis detector into a unified dashboard.
+StegoShield combines authenticated cryptography (**AES-256-GCM**, **PBKDF2**, and **X25519 ECDH**), keyed pseudorandom LSB steganography, a pre-flight cover image risk and capacity evaluator, and an AI-driven steganalysis detector into one web application: a **React + TypeScript** front end on a stateless **FastAPI** back end.
 
 ---
 
@@ -38,6 +38,15 @@ StegoShield/
 │   ├── dataset.py         # Stego-cover dataset generation
 │   ├── detector.py        # Steganalysis detector inference
 │   └── risk.py            # Pre-flight cover image risk scoring
+├── api/                   # FastAPI back end (stateless REST API over core/ and ml/)
+│   ├── main.py            # App factory, middleware stack, serves the built front end
+│   ├── routes/            # /api/keys, /api/hide, /api/reveal, /api/capacity, /api/preflight, /api/detect
+│   ├── analysis.py        # The only adapter between the API and ml/
+│   ├── images.py          # Upload limits, format checks, safe decoding
+│   ├── middleware.py      # Security headers, rate limit, body-size limit, request IDs
+│   └── errors.py          # One JSON error shape; never echoes secrets
+├── frontend/              # React + TypeScript + Vite single-page app
+│   └── src/               # pages/, components/, lib/ (typed API client), styles.css (design tokens)
 ├── tests/                 # Unit and security testing suite
 │   ├── test_crypto.py     # Cryptography round-trip and tamper tests
 │   ├── test_embed.py      # Embedding, extraction, and permutation tests
@@ -47,7 +56,8 @@ StegoShield/
 ├── notebooks/             # Google Colab training and experimentation notebooks
 ├── docs/                  # Architecture and protocol specifications
 │   └── payload_format.md  # Binary payload specification
-├── app.py                 # Streamlit multi-tab dashboard
+├── app.py                 # Legacy Streamlit dashboard (superseded by api/ + frontend/)
+├── Dockerfile             # Single production image: API + built front end
 ├── requirements.txt       # Python dependencies
 └── README.md              # Project documentation
 ```
@@ -58,6 +68,7 @@ StegoShield/
 
 ### 1. Prerequisites
 - Python 3.12
+- Node.js 22.12+ (front end)
 - Git
 
 ### 2. Create and Activate Virtual Environment
@@ -74,18 +85,35 @@ source .venv/bin/activate
 ### 3. Install Dependencies
 ```bash
 pip install -r requirements-dev.txt   # app + pytest + ruff
+npm --prefix frontend ci              # front end (exact versions from package-lock.json)
 ```
 
 ### 4. Run Tests and Lint
 ```bash
-pytest            # fast suite (slow tests: pytest -m slow)
+make check        # everything below
+pytest            # Python: fast suite (slow tests: pytest -m slow)
 ruff check .
+npm --prefix frontend test            # front end: Vitest + Testing Library
+npm --prefix frontend run lint        # ESLint incl. jsx-a11y accessibility rules
+npm --prefix frontend run typecheck
 ```
 
-### 5. Launch Dashboard
+### 5. Run the Web App
+**Development** (two terminals, hot reload):
 ```bash
-streamlit run app.py
+make dev-api      # FastAPI on http://127.0.0.1:8000 (API docs at /api/docs)
+make dev-web      # React on http://localhost:5173, proxies /api to :8000
 ```
+**Production-style** (one process, one origin):
+```bash
+make serve        # builds frontend/dist, then serves API + app on http://127.0.0.1:8000
+```
+**Docker:**
+```bash
+docker build -t stegoshield .
+docker run -p 8000:8000 stegoshield
+```
+If `models/detector.joblib` is missing or was trained on a different feature set, the app still runs; `/api/meta` reports why and the Detect page explains that scanning is unavailable.
 
 ### 6. Build the Detector Dataset
 ```bash
@@ -94,3 +122,47 @@ python -m ml.dataset          # 500 clean + 8,000 stego rows -> data/features/fe
 ```
 Both scripts take `--seed` (default 2026); the same seed gives a byte-identical CSV. Data folders are git-ignored.
 
+
+---
+
+## Web API
+
+All endpoints live under `/api`; interactive documentation is at `/api/docs`. Uploads are `multipart/form-data`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/health` | Liveness probe |
+| GET | `/api/meta` | Version, upload limits, detector status |
+| POST | `/api/keys/generate` | New X25519 key pair (optional passphrase on the private key) |
+| POST | `/api/keys/inspect` | Validate a public key and return its fingerprint |
+| POST | `/api/capacity` | Largest message an image can hold, per protection method |
+| POST | `/api/preflight` | Capacity + detectability risk for a planned message size |
+| POST | `/api/hide` | Encrypt and hide a message; returns a PNG |
+| POST | `/api/reveal` | Verify and decrypt a hidden message |
+| POST | `/api/detect` | Probability that an image hides data, with top contributing features |
+
+Every error has the same shape: `{"error": {"code", "message", "field?", "request_id"}}`. A wrong key, a modified image and "no message" all return the same `no_message_found` error on purpose.
+
+### Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `STEGOSHIELD_MAX_UPLOAD_MB` | 10 | Largest accepted image file |
+| `STEGOSHIELD_MAX_IMAGE_PIXELS` | 16777216 | Largest image (width × height), checked before decoding |
+| `STEGOSHIELD_MAX_MESSAGE_BYTES` | 524288 | Largest message accepted by `/api/hide` |
+| `STEGOSHIELD_RATE_LIMIT_PER_MINUTE` | 60 | POST requests per client IP per minute, per worker (0 disables) |
+| `STEGOSHIELD_MAX_CONCURRENT_JOBS` | CPU count | CPU-heavy jobs run at once per worker |
+| `STEGOSHIELD_CORS_ORIGINS` | *(none)* | Comma-separated origins; only needed if the front end is hosted elsewhere |
+| `STEGOSHIELD_STATIC_DIR` | `frontend/dist` | Built front end to serve; empty to serve the API only |
+| `STEGOSHIELD_DETECTOR_PATH` | `models/detector.joblib` | Trained detector artifact |
+| `STEGOSHIELD_ENABLE_DOCS` | 1 | Serve `/api/docs` |
+| `STEGOSHIELD_ENABLE_HSTS` | 0 | Send HSTS; enable only when served over HTTPS |
+| `STEGOSHIELD_LOG_LEVEL` | INFO | Python log level |
+
+### Security model
+
+- **Stateless.** Nothing is written to disk or a database. Images, messages, passwords and keys exist only in memory for the duration of one request.
+- **The server is trusted.** Encryption runs server-side, so the server sees the password or private key while handling a request. Run it yourself (localhost, or your own host behind HTTPS) rather than trusting someone else's instance.
+- **No secret leakage.** Logs contain method, path, status, timing and a request ID only. Validation errors never echo submitted values. API responses are sent with `Cache-Control: no-store`.
+- **Hardening.** Strict Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, no referrer; per-IP rate limiting; request-size, file-size and pixel-count limits; a bounded worker pool for CPU-heavy jobs.
+- **Output names don't leak.** The hidden-message PNG is named after the cover (`holiday.png`), not "stego".

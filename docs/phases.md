@@ -27,7 +27,7 @@ This is the authoritative definition of the development phases. Scope comes from
 | 3 | Detector | D | 2 | 1 day | ⬜ |
 | 4 | Pre-flight check | B | 1, 3 | ½ day | ⬜ |
 | 5 | Experiments | all | 1, 3, 4 | 1 day | ⬜ |
-| 6 | App + Evaluation Lab | UI | 4, 5 | 1 day | ⬜ |
+| 6 | Web app + Evaluation Lab | UI, API | 4, 5 | 2 days | 🟡 |
 | 7 | Report & demo | none | 6 | 1 day | ⬜ |
 
 Total: about 6½–7 working days.
@@ -235,31 +235,35 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 ---
 
-## Phase 6: App + Evaluation Lab ⬜
+## Phase 6: Web app (React + FastAPI) + Evaluation Lab 🟡
 
-**Goal:** A five-tab Streamlit dashboard that runs the whole pipeline on the trained model and demos the evaluation live.
+**Goal:** A full-stack web app (React + TypeScript front end, stateless FastAPI back end) that runs the whole pipeline on the trained model and demos the evaluation live.
 
-**Depends on:** 4, 5
+**Depends on:** 4, 5 (the app shell was built early; the pre-flight and Evaluation Lab parts wait on those phases)
+
+**Architecture decision (26 Nov 2026):** replaced the single-file Streamlit dashboard with `api/` (FastAPI) + `frontend/` (React, Vite). Stateless: no accounts, no database, nothing stored. `app.py` stays until this phase closes, then is deleted along with the `streamlit` dependency.
 
 **Tasks:**
-- [ ] Tab 2 (Pre-Flight Check) uses the Phase 4 result object.
-- [ ] Tab 3 (Hide & Extract) uses format v2.
-- [ ] Tab 4 (AI Detector) uses the trained detector and shows top features.
-- [ ] **New tab 5, Evaluation Lab:** live quality, robustness, attack, and detector-comparison demos that **import** the `experiments/` code. No duplication.
-- [ ] Every tab handles its empty, loading, success, error, and "detector not trained" states.
-- [ ] Warn when the uploaded cover is a JPEG; downscale or refuse images above a size limit, and say so.
-- [ ] Fix Streamlit deprecations (e.g. `use_container_width` → `width`).
-- [ ] `app.py` contains no crypto or ML logic, only calls into `core/` and `ml/`.
+- [x] `api/`: REST endpoints for keys, capacity, pre-flight, hide, reveal, detect; one JSON error shape; OpenAPI docs at `/api/docs`.
+- [x] Production hardening: CSP and security headers, `no-store` on API responses, per-IP rate limit, request/file/pixel limits, bounded CPU worker pool, request IDs, logs without secrets.
+- [x] `frontend/`: Home, Hide, Reveal, Pre-flight, Detect and Keys pages; responsive to 390 px; light/dark themes; every page handles empty, loading, success, error and "detector not installed" states.
+- [x] Detect page shows the trained detector's probability and top contributing features; API returns 503 with a reason when the model is missing or mismatched.
+- [x] Warn on JPEG covers; reject JPEG/WebP on reveal with an explanation; enforce size limits client- and server-side.
+- [x] Packaging: `Dockerfile` (single image), `Makefile` (`dev-api`, `dev-web`, `serve`, `check`).
+- [ ] Pre-flight page uses the Phase 4 detector-in-the-loop result (only `api/analysis.py` needs to change).
+- [ ] **Evaluation Lab page:** live quality, robustness, attack and detector-comparison demos that **import** the `experiments/` code via new API endpoints. No duplication.
+- [ ] Delete `app.py` and the `streamlit` dependency.
 
-**Deliverables:** `app.py` (or `app.py` + `ui/` modules if it passes about 600 lines)
+**Deliverables:** `api/`, `frontend/`, `tests/test_api.py`, `frontend/src/**/*.test.ts(x)`, `Dockerfile`, `Makefile`
 
 **Exit criteria:**
-- [ ] Manual walkthrough passes: keys → pre-flight → hide → download → extract → detect → Evaluation Lab.
-- [ ] Wrong password and tampered image show a clear message, not a stack trace.
-- [ ] No Streamlit deprecation warnings in the terminal.
-- [ ] Risk level is never conveyed by colour alone (label + icon + percentage).
+- [ ] Manual walkthrough passes: keys → pre-flight → hide → download → reveal → detect → Evaluation Lab.
+- [x] Wrong password and tampered image show a clear message, not a stack trace.
+- [x] Risk level is never conveyed by colour alone (label + icon + percentage).
+- [x] `pytest`, `ruff`, `npm test`, `npm run lint` (incl. jsx-a11y) and `npm run typecheck` all pass.
+- [ ] `docker build` succeeds and the container passes its health check.
 
-**Not in this phase:** user accounts, public deployment (out of scope).
+**Not in this phase:** user accounts, a database, public deployment (out of scope).
 
 ---
 
@@ -297,7 +301,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 | Eval: Pre-flight validity | 5 (`preflight_eval.py`) |
 | Eval: Transport robustness | 5 (`robustness.py`) |
 | Eval: Security & integrity | 1 (tests), 5 (`security_results.md`) |
-| Deliverable 1: App + CLI | 6 |
+| Deliverable 1: Web app (React + FastAPI) + CLI | 6 |
 | Deliverable 2: `models/detector.joblib` | 3 |
 | Deliverable 3: Experiment scripts + results | 5 |
 | Deliverable 4: Test suite | 0–6 |
