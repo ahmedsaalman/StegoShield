@@ -142,23 +142,29 @@ class StegoDetector:
         # Highlight key contributing indicators
         anomalies = []
         if feat_dict.get("chi_square_p_value", 1.0) < 0.05:
-            anomalies.append({
-                "metric": "Chi-Square Test",
-                "finding": "Asymmetric Pair-of-Values (PoV) distribution detected",
-                "p_value": f"{feat_dict['chi_square_p_value']:.4e}",
-            })
+            anomalies.append(
+                {
+                    "metric": "Chi-Square Test",
+                    "finding": "Asymmetric Pair-of-Values (PoV) distribution detected",
+                    "p_value": f"{feat_dict['chi_square_p_value']:.4e}",
+                }
+            )
         if 0.47 <= feat_dict.get("lsb_horiz_transition_rate", 0.0) <= 0.53:
-            anomalies.append({
-                "metric": "LSB Spatial Autocorrelation",
-                "finding": "Near-random horizontal bit transition rate (~50%)",
-                "rate": f"{feat_dict['lsb_horiz_transition_rate']:.3f}",
-            })
+            anomalies.append(
+                {
+                    "metric": "LSB Spatial Autocorrelation",
+                    "finding": "Near-random horizontal bit transition rate (~50%)",
+                    "rate": f"{feat_dict['lsb_horiz_transition_rate']:.3f}",
+                }
+            )
         if 0.49 <= feat_dict.get("lsb_mean", 0.0) <= 0.51:
-            anomalies.append({
-                "metric": "LSB Bit-Plane Uniformity",
-                "finding": "LSB mean is balanced close to 0.500 (typical of ciphertext)",
-                "mean": f"{feat_dict['lsb_mean']:.3f}",
-            })
+            anomalies.append(
+                {
+                    "metric": "LSB Bit-Plane Uniformity",
+                    "finding": "LSB mean is balanced close to 0.500 (typical of ciphertext)",
+                    "mean": f"{feat_dict['lsb_mean']:.3f}",
+                }
+            )
 
         return {
             "is_stego": is_stego,
@@ -168,11 +174,8 @@ class StegoDetector:
             "badge": risk_badge,
             "threshold": threshold,
             "model_type": (
-                "Trained Random Forest"
-                if (self.model and not self.is_heuristic)
-                else "Statistical Heuristic Baseline"
+                "Trained Random Forest" if (self.model and not self.is_heuristic) else "Statistical Heuristic Baseline"
             ),
             "features": feat_dict,
             "anomalies": anomalies,
         }
-

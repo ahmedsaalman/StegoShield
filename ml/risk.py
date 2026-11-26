@@ -191,4 +191,3 @@ class PreFlightRiskScorer:
                 "lsb_mean": f"{feat_dict.get('lsb_mean', 0):.3f}",
             },
         }
-

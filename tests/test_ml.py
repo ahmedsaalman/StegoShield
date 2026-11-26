@@ -97,4 +97,3 @@ def test_dataset_generator_sample(tmp_path):
     assert records[0]["is_stego"] == 0
     assert records[1]["is_stego"] == 1
     assert records[2]["is_stego"] == 1
-

@@ -42,7 +42,8 @@ st.set_page_config(
 )
 
 # Custom CSS for polished interface
-st.markdown("""
+st.markdown(
+    """
 <style>
     .main-title {
         font-size: 2.2rem;
@@ -82,7 +83,9 @@ st.markdown("""
         font-weight: 600;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ==============================================================================
@@ -108,6 +111,7 @@ if "stego_result_image" not in st.session_state:
 def get_detector() -> StegoDetector:
     return StegoDetector()
 
+
 @st.cache_resource
 def get_risk_scorer() -> PreFlightRiskScorer:
     return PreFlightRiskScorer()
@@ -125,12 +129,14 @@ st.markdown(
 )
 
 # Tabs Navigation
-tab_keys, tab_audit, tab_hide_extract, tab_detector = st.tabs([
-    "🔑 Module A: Keys & Key Management",
-    "🔍 Module B: Pre-Flight Cover Audit",
-    "🔒 Module C: Hide & Extract Engine",
-    "🛡️ Module D: Defensive AI Detector",
-])
+tab_keys, tab_audit, tab_hide_extract, tab_detector = st.tabs(
+    [
+        "🔑 Module A: Keys & Key Management",
+        "🔍 Module B: Pre-Flight Cover Audit",
+        "🔒 Module C: Hide & Extract Engine",
+        "🛡️ Module D: Defensive AI Detector",
+    ]
+)
 
 
 # ==============================================================================
@@ -139,7 +145,9 @@ tab_keys, tab_audit, tab_hide_extract, tab_detector = st.tabs([
 
 with tab_keys:
     st.header("Cryptographic Key Management")
-    st.caption("Manage pre-shared passwords for PBKDF2 symmetric mode or generate and import X25519 elliptic-curve keypairs for asymmetric mode.")
+    st.caption(
+        "Manage pre-shared passwords for PBKDF2 symmetric mode or generate and import X25519 elliptic-curve keypairs for asymmetric mode."
+    )
 
     col1, col2 = st.columns(2)
 
@@ -189,7 +197,9 @@ with tab_keys:
         st.subheader("2. Asymmetric Key Generator (X25519 ECDH)")
         st.write("Generate a fresh public/private keypair for secure asymmetric steganography.")
 
-        passphrase = st.text_input("Optional Private Key Passphrase", type="password", help="Encrypts exported private key with AES")
+        passphrase = st.text_input(
+            "Optional Private Key Passphrase", type="password", help="Encrypts exported private key with AES"
+        )
 
         if st.button("Generate New X25519 Keypair", type="primary"):
             priv, pub = generate_keypair()
@@ -228,7 +238,9 @@ with tab_keys:
 
 with tab_audit:
     st.header("Pre-Flight Cover Image Audit & Capacity Checker")
-    st.caption("Inspect carrier image statistics, evaluate maximum safe payload limits, and predict AI detectability risk before committing to steganography.")
+    st.caption(
+        "Inspect carrier image statistics, evaluate maximum safe payload limits, and predict AI detectability risk before committing to steganography."
+    )
 
     cover_file = st.file_uploader(
         "Upload Candidate Cover Image",
@@ -243,7 +255,11 @@ with tab_audit:
         col_img, col_metrics = st.columns([1, 2])
 
         with col_img:
-            st.image(cover_img, caption=f"Carrier: {cover_file.name} ({cover_img.width}x{cover_img.height})", use_container_width=True)
+            st.image(
+                cover_img,
+                caption=f"Carrier: {cover_file.name} ({cover_img.width}x{cover_img.height})",
+                use_container_width=True,
+            )
 
         with col_metrics:
             cap = calculate_image_capacity(cover_img)
@@ -294,7 +310,9 @@ with tab_audit:
 
 with tab_hide_extract:
     st.header("Steganographic Hide & Extract Engine")
-    st.caption("Encrypt payloads with AES-256-GCM and embed them across pixel channels using key-seeded pseudorandom permutations.")
+    st.caption(
+        "Encrypt payloads with AES-256-GCM and embed them across pixel channels using key-seeded pseudorandom permutations."
+    )
 
     op_mode = st.radio("Choose Operation", ["🔒 Hide Secret Message", "🔓 Extract Hidden Message"], horizontal=True)
 
@@ -330,16 +348,24 @@ with tab_hide_extract:
             algo_choice = st.selectbox(
                 "Embedding Algorithm",
                 ["replacement", "matching"],
-                format_func=lambda x: "Standard LSB Replacement" if x == "replacement" else "LSB Matching (+/-1 Embedding, Anti-PoV)",
+                format_func=lambda x: (
+                    "Standard LSB Replacement" if x == "replacement" else "LSB Matching (+/-1 Embedding, Anti-PoV)"
+                ),
             )
 
             perm_choice = st.selectbox(
                 "Permutation Mapping",
                 ["pseudorandom", "sequential"],
-                format_func=lambda x: "Key-Seeded Pseudorandom (Scattered, Defeats Sequential Extraction)" if x == "pseudorandom" else "Sequential (Baseline comparison)",
+                format_func=lambda x: (
+                    "Key-Seeded Pseudorandom (Scattered, Defeats Sequential Extraction)"
+                    if x == "pseudorandom"
+                    else "Sequential (Baseline comparison)"
+                ),
             )
 
-            secret_msg = st.text_area("Secret Plaintext Message", height=120, placeholder="Enter confidential message to conceal...")
+            secret_msg = st.text_area(
+                "Secret Plaintext Message", height=120, placeholder="Enter confidential message to conceal..."
+            )
 
         if st.button("🚀 Encrypt & Conceal in Image", type="primary"):
             if not active_cover:
@@ -410,7 +436,9 @@ with tab_hide_extract:
             ext_perm_choice = st.selectbox(
                 "Extraction Permutation",
                 ["pseudorandom", "sequential"],
-                format_func=lambda x: "Key-Seeded Pseudorandom (Default)" if x == "pseudorandom" else "Sequential (Baseline)",
+                format_func=lambda x: (
+                    "Key-Seeded Pseudorandom (Default)" if x == "pseudorandom" else "Sequential (Baseline)"
+                ),
                 key="ext_perm_choice",
             )
 
@@ -445,7 +473,9 @@ with tab_hide_extract:
                             plaintext = stego_decode_asymmetric(stego_in_img, priv_key, mode=ext_perm_choice)
 
                     st.success("✅ Payload authenticated and decrypted successfully!")
-                    st.text_area("Decrypted Secret Message", value=plaintext.decode("utf-8", errors="replace"), height=140)
+                    st.text_area(
+                        "Decrypted Secret Message", value=plaintext.decode("utf-8", errors="replace"), height=140
+                    )
 
                 except AuthenticationError as ae:
                     st.error(f"🛡️ {ae}")
@@ -461,7 +491,9 @@ with tab_hide_extract:
 
 with tab_detector:
     st.header("Defensive AI Steganalysis Detector")
-    st.caption("Inspect unknown images for steganographic anomalies using 27 statistical features (Chi-square test, LSB autocorrelation, and spatial co-occurrence).")
+    st.caption(
+        "Inspect unknown images for steganographic anomalies using 27 statistical features (Chi-square test, LSB autocorrelation, and spatial co-occurrence)."
+    )
 
     detect_file = st.file_uploader(
         "Upload Image for AI Steganalysis",
@@ -499,8 +531,9 @@ with tab_detector:
                     for a in result["anomalies"]:
                         st.warning(f"⚠️ **{a['metric']}**: {a['finding']}")
                 else:
-                    st.success("✅ No statistical anomalies found. Pairs-of-values and bit-plane transitions reflect clean carrier characteristics.")
+                    st.success(
+                        "✅ No statistical anomalies found. Pairs-of-values and bit-plane transitions reflect clean carrier characteristics."
+                    )
 
                 with st.expander("📊 Complete 27-Feature Inspection"):
                     st.json(result["features"])
-

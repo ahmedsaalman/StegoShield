@@ -30,6 +30,7 @@ EmbeddingAlgorithm = Literal["replacement", "matching"]
 # Bit / byte utilities
 # ==============================================================================
 
+
 def bytes_to_bits(data: bytes) -> np.ndarray:
     """Convert bytes to a 1D uint8 array of bits (MSB first)."""
     return np.unpackbits(np.frombuffer(data, dtype=np.uint8))
@@ -45,6 +46,7 @@ def bits_to_bytes(bits: np.ndarray) -> bytes:
 # ==============================================================================
 # Slot selection
 # ==============================================================================
+
 
 def _bit_generator(key: bytes) -> np.random.PCG64:
     # SeedSequence + PCG64 raw output is stable across NumPy versions, so sender
@@ -97,8 +99,8 @@ def select_slots(
         # Draw enough candidates to cover duplicates and already-used slots.
         batch = max(1024, int(need * total_slots / free_now * 1.25) + 64)
         cand = (bitgen.random_raw(batch) % np.uint64(total_slots)).astype(np.int64)
-        _, first = np.unique(cand, return_index=True)   # first occurrence of each slot...
-        cand = cand[np.sort(first)]                      # ...kept in stream order
+        _, first = np.unique(cand, return_index=True)  # first occurrence of each slot...
+        cand = cand[np.sort(first)]  # ...kept in stream order
         cand = cand[~used[cand]][:need]
         used[cand] = True
         out[filled : filled + len(cand)] = cand
@@ -109,6 +111,7 @@ def select_slots(
 # ==============================================================================
 # Carrier access
 # ==============================================================================
+
 
 def image_to_carrier(image: Image.Image) -> tuple[np.ndarray, np.ndarray, str]:
     """Return (full pixel array, flat copy of the embeddable channels, image mode)."""
@@ -168,6 +171,7 @@ def read_bits(flat: np.ndarray, slots: np.ndarray) -> np.ndarray:
 # ==============================================================================
 # Simple length-prefixed embedding (dataset generation / baseline)
 # ==============================================================================
+
 
 def embed_payload(
     cover_image: Image.Image,

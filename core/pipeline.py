@@ -82,6 +82,7 @@ def max_message_bytes(image: Image.Image, enc_mode: str = "password") -> int:
 # Two-stage core
 # ==============================================================================
 
+
 def _hide(
     cover: Image.Image,
     locator_key: bytes,
@@ -144,6 +145,7 @@ def _reveal(
 # Password mode
 # ==============================================================================
 
+
 def stego_encode_password(
     cover: ImageInput,
     secret_message: str | bytes,
@@ -156,8 +158,14 @@ def stego_encode_password(
     keys = derive_password_session(password, salt)
     stage2 = seal(MODE_PASSWORD, salt, keys, secret_message)
     return _hide(
-        _load_image(cover), locator_key_from_password(password), salt, keys, stage2,
-        algorithm, mode, MODE_PASSWORD,
+        _load_image(cover),
+        locator_key_from_password(password),
+        salt,
+        keys,
+        stage2,
+        algorithm,
+        mode,
+        MODE_PASSWORD,
     )
 
 
@@ -168,14 +176,18 @@ def stego_decode_password(
 ) -> bytes:
     """Recover and decrypt a password-mode message."""
     return _reveal(
-        _load_image(stego), locator_key_from_password(password),
-        lambda salt: derive_password_session(password, salt), mode, MODE_PASSWORD,
+        _load_image(stego),
+        locator_key_from_password(password),
+        lambda salt: derive_password_session(password, salt),
+        mode,
+        MODE_PASSWORD,
     )
 
 
 # ==============================================================================
 # Asymmetric (X25519) mode
 # ==============================================================================
+
 
 def stego_encode_asymmetric(
     cover: ImageInput,
@@ -188,8 +200,14 @@ def stego_encode_asymmetric(
     eph, keys = new_asymmetric_session(recipient_public_key)
     stage2 = seal(MODE_ASYMMETRIC, eph, keys, secret_message)
     return _hide(
-        _load_image(cover), locator_key_from_public_key(recipient_public_key), eph, keys, stage2,
-        algorithm, mode, MODE_ASYMMETRIC,
+        _load_image(cover),
+        locator_key_from_public_key(recipient_public_key),
+        eph,
+        keys,
+        stage2,
+        algorithm,
+        mode,
+        MODE_ASYMMETRIC,
     )
 
 
@@ -200,14 +218,18 @@ def stego_decode_asymmetric(
 ) -> bytes:
     """Recover and decrypt an asymmetric-mode message with the recipient's private key."""
     return _reveal(
-        _load_image(stego), locator_key_from_public_key(recipient_private_key.public_key()),
-        lambda eph: open_asymmetric_session(recipient_private_key, eph), mode, MODE_ASYMMETRIC,
+        _load_image(stego),
+        locator_key_from_public_key(recipient_private_key.public_key()),
+        lambda eph: open_asymmetric_session(recipient_private_key, eph),
+        mode,
+        MODE_ASYMMETRIC,
     )
 
 
 # ==============================================================================
 # CLI Entry Point
 # ==============================================================================
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -324,4 +346,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

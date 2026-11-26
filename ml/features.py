@@ -172,16 +172,16 @@ def extract_cooccurrence_features(gray: np.ndarray, t_bound: int = 3) -> dict[st
         # 2D histogram transition matrix
         cooc, _, _ = np.histogram2d(d1, d2, bins=num_bins, range=[[0, num_bins], [0, num_bins]])
         total = np.sum(cooc)
-        p = (cooc / total) if total > 0 else np.full((num_bins, num_bins), 1.0 / (num_bins ** 2))
+        p = (cooc / total) if total > 0 else np.full((num_bins, num_bins), 1.0 / (num_bins**2))
     else:
         num_bins = 2 * t_bound + 1
-        p = np.full((num_bins, num_bins), 1.0 / (num_bins ** 2))
+        p = np.full((num_bins, num_bins), 1.0 / (num_bins**2))
 
     # Haralick-style descriptors
     i_indices, j_indices = np.indices(p.shape)
     contrast = float(np.sum(((i_indices - j_indices) ** 2) * p))
     homogeneity = float(np.sum(p / (1.0 + np.abs(i_indices - j_indices))))
-    energy = float(np.sum(p ** 2))
+    energy = float(np.sum(p**2))
     entropy_val = float(-np.sum(p * np.log2(np.clip(p, 1e-12, 1.0))))
 
     return {
@@ -241,4 +241,3 @@ def extract_features(image: Image.Image) -> tuple[np.ndarray, dict[str, float]]:
     # Build ordered vector
     vec = np.array([feat_dict[k] for k in FEATURE_NAMES], dtype=np.float64)
     return vec, feat_dict
-

@@ -101,7 +101,4 @@ def import_public_key_auto(key_str: str) -> x25519.X25519PublicKey:
     try:
         return import_public_key_base64(cleaned)
     except Exception as e:
-        raise ValueError(
-            "Could not parse public key. Must be valid PEM, 32-byte Base64, or 64-char Hex."
-        ) from e
-
+        raise ValueError("Could not parse public key. Must be valid PEM, 32-byte Base64, or 64-char Hex.") from e

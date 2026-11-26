@@ -96,4 +96,3 @@ def test_asymmetric_pipeline_wrong_key_fails(test_image):
 
     with pytest.raises((AuthenticationError, InvalidPayloadError)):
         stego_decode_asymmetric(loaded_stego, bob_priv)
-

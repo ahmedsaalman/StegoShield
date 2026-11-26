@@ -40,6 +40,7 @@ from core.keys import (
 # Password Mode
 # ==============================================================================
 
+
 def test_password_mode_round_trip():
     secret = "TopSecretStegoMessage 12345! @#$%"
     packet = encrypt_password(secret, "CorrectHorseBatteryStaple#99")
@@ -87,6 +88,7 @@ def test_password_packets_are_randomised():
 # Asymmetric Mode (X25519)
 # ==============================================================================
 
+
 def test_asymmetric_mode_round_trip():
     alice_priv, alice_pub = generate_keypair()
     packet = encrypt_asymmetric("AsymmetricSecretFromSender", alice_pub)
@@ -122,6 +124,7 @@ def test_asymmetric_top_bit_is_randomised():
 # No plaintext markers & key separation
 # ==============================================================================
 
+
 def test_packets_contain_no_magic_bytes():
     _, pub = generate_keypair()
     for _ in range(3):
@@ -148,6 +151,7 @@ def test_locator_keys_are_deterministic_and_distinct():
 # ==============================================================================
 # Key Management & Serialization Tests
 # ==============================================================================
+
 
 def test_keypair_generation_and_export():
     """Verify key generation, PEM export, and import."""
@@ -186,25 +190,32 @@ def test_public_key_formats_and_auto_import():
     # PEM
     pem_str = export_public_key_pem(pub)
     loaded_from_pem = import_public_key_auto(pem_str)
-    assert loaded_from_pem.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    ) == raw_pub_bytes
+    assert (
+        loaded_from_pem.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        == raw_pub_bytes
+    )
 
     # Base64
     b64_str = export_public_key_base64(pub)
     loaded_from_b64 = import_public_key_auto(b64_str)
-    assert loaded_from_b64.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    ) == raw_pub_bytes
+    assert (
+        loaded_from_b64.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        == raw_pub_bytes
+    )
 
     # Hex
     hex_str = raw_pub_bytes.hex()
     loaded_from_hex = import_public_key_auto(hex_str)
-    assert loaded_from_hex.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    ) == raw_pub_bytes
-
-
+    assert (
+        loaded_from_hex.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        == raw_pub_bytes
+    )

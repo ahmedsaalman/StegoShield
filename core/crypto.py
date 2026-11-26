@@ -39,7 +39,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 # Protocol constants
 # ==============================================================================
 
-MAGIC: bytes = b"STSH"          # authenticated via AAD only, never embedded
+MAGIC: bytes = b"STSH"  # authenticated via AAD only, never embedded
 VERSION: int = 2
 MODE_PASSWORD: int = 1
 MODE_ASYMMETRIC: int = 2
@@ -65,6 +65,7 @@ def packet_overhead(mode: int) -> int:
 # ==============================================================================
 # Errors
 # ==============================================================================
+
 
 class StegoCryptoError(Exception):
     """Base exception for cryptographic operations in StegoShield."""
@@ -92,13 +93,14 @@ NO_MESSAGE_TEXT = (
 # Key derivation
 # ==============================================================================
 
+
 @dataclass(frozen=True)
 class SessionKeys:
     """Independent sub-keys derived from one master secret (HKDF domain separation)."""
 
-    enc_key: bytes       # AES-256-GCM key
-    slot_key: bytes      # seeds the stage-2 pixel positions
-    mask_key: bytes      # masks the length field
+    enc_key: bytes  # AES-256-GCM key
+    slot_key: bytes  # seeds the stage-2 pixel positions
+    mask_key: bytes  # masks the length field
     matching_key: bytes  # seeds the +/-1 choices of LSB matching
 
 
@@ -139,9 +141,9 @@ def derive_password_session(password: str, salt: bytes) -> SessionKeys:
     """PBKDF2-HMAC-SHA256 (600k iterations) then HKDF into independent sub-keys."""
     if not password:
         raise ValueError("Password cannot be empty.")
-    master = PBKDF2HMAC(
-        algorithm=hashes.SHA256(), length=32, salt=salt, iterations=PBKDF2_ITERATIONS
-    ).derive(password.encode("utf-8"))
+    master = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=PBKDF2_ITERATIONS).derive(
+        password.encode("utf-8")
+    )
     return _session_from_master(master)
 
 
@@ -196,6 +198,7 @@ def open_asymmetric_session(
 # Sealing / opening stage 2
 # ==============================================================================
 
+
 def _aad(mode: int, stage1: bytes, nonce: bytes, length: int) -> bytes:
     """Everything that must be authenticated but not embedded."""
     return MAGIC + bytes([VERSION, mode]) + stage1 + nonce + struct.pack(">I", length)
@@ -241,6 +244,7 @@ def open_sealed(mode: int, stage1: bytes, keys: SessionKeys, stage2: bytes) -> b
 # ==============================================================================
 # Whole-packet helpers (packet = stage1 || stage2)
 # ==============================================================================
+
 
 def encrypt_password(plaintext: bytes | str, password: str) -> bytes:
     """Encrypt with a password. Returns the full packet: salt || stage 2."""

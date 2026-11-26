@@ -50,6 +50,7 @@ def create_synthetic_image(width=100, height=100, mode="RGB", pattern="gradient"
 # Bit/Byte Tests (L08)
 # ==============================================================================
 
+
 def test_bits_bytes_round_trip():
     """Verify bit packing and unpacking."""
     raw = b"StegoShield Bit Test \x00\xff\xaa\x55"
@@ -62,6 +63,7 @@ def test_bits_bytes_round_trip():
 # ==============================================================================
 # Slot Selection Tests
 # ==============================================================================
+
 
 def test_select_slots_deterministic_unique_in_range():
     a = select_slots(10_000, 3_000, key=b"K" * 32)
@@ -96,6 +98,7 @@ def test_select_slots_sequential():
 # ==============================================================================
 # Embedding Round-Trip Tests (L10, L11, L12)
 # ==============================================================================
+
 
 @pytest.mark.parametrize("mode", ["RGB", "RGBA", "L"])
 @pytest.mark.parametrize("algo", ["replacement", "matching"])
@@ -178,4 +181,3 @@ def test_over_capacity_rejection():
 
     with pytest.raises(CapacityExceededError):
         embed_payload(tiny_img, huge_payload)
-

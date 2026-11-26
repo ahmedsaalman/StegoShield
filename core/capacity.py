@@ -11,13 +11,14 @@ from typing import Any
 from PIL import Image
 
 # Recommended safe payload ratios based on steganographic literature
-SAFE_PAYLOAD_RATIO: float = 0.10      # <= 10% carrier capacity: low detectability risk
+SAFE_PAYLOAD_RATIO: float = 0.10  # <= 10% carrier capacity: low detectability risk
 MODERATE_PAYLOAD_RATIO: float = 0.25  # 10% - 25%: moderate detectability risk
-HIGH_PAYLOAD_RATIO: float = 0.50      # 25% - 50%: high detectability risk
+HIGH_PAYLOAD_RATIO: float = 0.50  # 25% - 50%: high detectability risk
 
 
 class CapacityExceededError(ValueError):
     """Raised when the payload exceeds carrier image capacity."""
+
     pass
 
 
@@ -87,4 +88,3 @@ def check_capacity(image: Image.Image, payload_length_bytes: int) -> None:
             f"Payload of {payload_length_bytes} bytes exceeds carrier capacity of "
             f"{cap['max_payload_bytes']} bytes ({cap['width']}x{cap['height']} image)."
         )
-

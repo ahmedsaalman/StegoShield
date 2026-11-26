@@ -52,6 +52,7 @@ def _read(flat: np.ndarray, count_bytes: int, key: bytes, exclude=None) -> bytes
 
 # 1. Pixel tampering --------------------------------------------------------------
 
+
 def test_pixel_tampering_is_rejected(carrier_image):
     stego = np.array(stego_encode_password(carrier_image, "Tamper resistance", "PixelPass#4"))
     stego[:60, :, :] ^= 0x01  # flip the LSB of every channel in the top half
@@ -77,6 +78,7 @@ def test_single_slot_tampering_is_rejected(carrier_image):
 
 # 2. Cropping ----------------------------------------------------------------------
 
+
 def test_cropped_image_fails_safely(carrier_image):
     stego = stego_encode_password(carrier_image, "Resistant to cropping", "CropPass#5")
     w, h = stego.size
@@ -85,6 +87,7 @@ def test_cropped_image_fails_safely(carrier_image):
 
 
 # 3. Wrong keys --------------------------------------------------------------------
+
 
 def test_wrong_password_and_wrong_private_key(carrier_image):
     with pytest.raises(AuthenticationError):
@@ -96,6 +99,7 @@ def test_wrong_password_and_wrong_private_key(carrier_image):
 
 
 # 4. Public key alone reveals nothing ---------------------------------------------
+
 
 def test_public_key_holder_cannot_find_message(carrier_image):
     """v1 bug: positions came from the public key, so anyone could read 'STSH'.
@@ -117,6 +121,7 @@ def test_public_key_holder_cannot_find_message(carrier_image):
 
 # 5. Password guesses can't be confirmed cheaply -----------------------------------
 
+
 def test_password_guess_cannot_be_confirmed_without_pbkdf2(carrier_image):
     """v1 bug: a guess could be checked by reading 'STSH' at cheap HKDF positions.
 
@@ -126,13 +131,13 @@ def test_password_guess_cannot_be_confirmed_without_pbkdf2(carrier_image):
     """
     password = "hunter2"
     locator = locator_key_from_password(password)
-    salts = {_read(_flat(stego_encode_password(carrier_image, "same", password)), SALT_SIZE, locator)
-             for _ in range(5)}
+    salts = {_read(_flat(stego_encode_password(carrier_image, "same", password)), SALT_SIZE, locator) for _ in range(5)}
     assert len(salts) == 5
     assert all(MAGIC not in s for s in salts)
 
 
 # 6. No plaintext marker anywhere ---------------------------------------------------
+
 
 @pytest.mark.parametrize("layout", ["pseudorandom", "sequential"])
 def test_no_magic_bytes_in_image(carrier_image, layout):
@@ -182,6 +187,7 @@ def test_embedded_bits_pass_randomness_checks():
 
 
 # 7. Positions differ per message -------------------------------------------------------
+
 
 def test_same_password_uses_different_positions(carrier_image):
     """Stage-2 positions depend on the per-message salt, so two messages don't line up."""
