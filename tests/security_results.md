@@ -2,6 +2,8 @@
 
 **Tests:** `tests/test_security.py`, `tests/test_crypto.py` · **Run:** `pytest tests/test_security.py tests/test_crypto.py -v`
 
+**Last verified:** 26 Nov 2026 with `python -m experiments.security`. All 32 tests passed (10 security, 22 crypto); per-test outcomes are in `experiments/results/security.csv`, and the measured evaluation is in [docs/results.md](../docs/results.md) §5.
+
 | # | Threat | Attack | Defence | Expected result | Test |
 |---|---|---|---|---|---|
 | 1 | Ciphertext / tag tampering | Flip any bit of the packet (salt, nonce, length, ciphertext, tag) | AES-256-GCM tag; salt, nonce and length bound in AAD | `AuthenticationError`, no plaintext released | `test_password_mode_any_byte_tampering_fails`, `test_asymmetric_mode_tampering_fails` |

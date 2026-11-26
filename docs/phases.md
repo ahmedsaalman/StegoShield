@@ -26,7 +26,7 @@ This is the authoritative definition of the development phases. Scope comes from
 | 2 | Dataset | D | 0 | ½–1 day | ✅ |
 | 3 | Detector | D | 2 | 1 day | ✅ |
 | 4 | Pre-flight check | B | 1, 3 | ½ day | ✅ |
-| 5 | Experiments | all | 1, 3, 4 | 1 day | ⬜ |
+| 5 | Experiments | all | 1, 3, 4 | 1 day | ✅ |
 | 6 | Web app + Evaluation Lab | UI, API | 4, 5 | 2 days | 🟡 |
 | 7 | Report & demo | none | 6 | 1 day | ⬜ |
 
@@ -217,27 +217,33 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 ---
 
-## Phase 5: Experiments ⬜
+## Phase 5: Experiments ✅
 
 **Goal:** Reproducible numbers and figures for every row of the proposal's evaluation plan.
 
 **Depends on:** 1, 3, 4
 
 **Tasks** (all under `experiments/`, each script importable by the app and runnable from the command line):
-- [ ] `quality.py`: PSNR and SSIM per payload ratio (5/10/25/50 %), mean ± std over the test covers.
-- [ ] `detector_eval.py`: ROC curves; sequential vs pseudorandom; replacement vs matching; per ratio.
-- [ ] `preflight_eval.py`: predicted risk level vs actual detection rate on held-out covers, split into smooth vs textured by median texture complexity.
-- [ ] `robustness.py`: extraction success after PNG re-save, JPEG q90, JPEG q75, 50 % resize. Expected result: PNG succeeds and the rest **fail safely**, which is reported as such.
-- [ ] Security results: pulled from the test suite into `tests/security_results.md`.
-- [ ] `docs/results.md`: one table + one figure per experiment, with one or two sentences of interpretation each.
+- [x] `quality.py`: PSNR and SSIM per payload ratio (5/10/25/50 %), mean ± std over the test covers.
+- [x] `detector_eval.py`: ROC curves; sequential vs pseudorandom; replacement vs matching; per ratio.
+- [x] `preflight_eval.py`: predicted risk level vs actual detection rate on held-out covers, split into smooth vs textured by median texture complexity.
+- [x] `robustness.py`: extraction success after PNG re-save, JPEG q90, JPEG q75, 50 % resize. Expected result: PNG succeeds and the rest **fail safely**, which is reported as such.
+- [x] Security results: pulled from the test suite into `tests/security_results.md`. *`experiments/security.py` runs the 32 security tests and writes one row per test to `experiments/results/security.csv`.*
+- [x] `docs/results.md`: one table + one figure per experiment, with one or two sentences of interpretation each.
 
 **Deliverables:** `experiments/*.py`, `experiments/results/*.csv`, `docs/figures/*.png`, `docs/results.md`
 
 **Exit criteria:**
-- [ ] Each script runs end to end from a clean checkout plus the dataset, with a fixed seed.
-- [ ] All five evaluations in the proposal have a table in `results.md`.
-- [ ] Figures have axis labels, units, and legends, and stay readable in greyscale print.
-- [ ] No test-set cover was used in training (re-checked from the split file).
+- [x] Each script runs end to end from a clean checkout plus the dataset, with a fixed seed.
+- [x] All five evaluations in the proposal have a table in `results.md`.
+- [x] Figures have axis labels, units, and legends, and stay readable in greyscale print.
+- [x] No test-set cover was used in training (re-checked from the split file).
+
+*Results* (full write-up in [results.md](results.md)): PSNR ≥ 54 dB and SSIM ≥ 0.998 even at 50 %. The detector catches replacement (AUC 0.87 at 5 %, 0.998 at 50 %), but matching stays near chance (≤ 0.57). Predicted Low → 0 % actually detected (n = 125), predicted High → 99 % (n = 291), the same for smooth and textured covers. PNG re-save recovers 40/40; JPEG q90/q75 and 50 % resize fail safely 120/120. All 32 security tests pass.
+
+*Reproducibility:* `quality` and `detector_eval` are byte-identical across runs (checked, including a rebuilt `split.csv`). `preflight_eval` and `robustness` hide real v2 messages, whose keys come from `os.urandom` as in production, so their individual detector scores vary slightly. Their message content and predictions are seeded.
+
+*Held-out check:* `experiments/common.py` recreates the detector's split from the seed stored in `models/detector.joblib`, saves it to `experiments/results/split.csv`, rejects any source photo on both sides, and every script calls `assert_held_out` on its covers before running.
 
 **Not in this phase:** real social-media upload tests (out of scope).
 

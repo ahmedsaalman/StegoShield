@@ -1,0 +1,5 @@
+transport,recovered,failed_safely,unsafe,n_trials,recovered_rate,failed_safely_rate,unsafe_rate,seed
+png_resave,40,0,0,40,1,0,0,2026
+jpeg_q90,0,40,0,40,0,1,0,2026
+jpeg_q75,0,40,0,40,0,1,0,2026
+resize_50,0,40,0,40,0,1,0,2026

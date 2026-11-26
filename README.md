@@ -38,7 +38,10 @@ StegoShield/
 │   ├── features.py        # LSB statistics, chi-square, spatial co-occurrence
 │   ├── dataset.py         # Stego-cover dataset generation
 │   ├── detector.py        # Steganalysis detector inference
+│   ├── train_detector.py  # Source-grouped split, calibrated Random Forest, held-out metrics
 │   └── risk.py            # Pre-flight check: capacity + detector-in-the-loop risk
+├── experiments/           # Reproducible evaluations (quality, detector, pre-flight, robustness, security)
+│   └── results/           # CSV outputs + split.csv (which covers are held out)
 ├── api/                   # FastAPI back end (stateless REST API over core/ and ml/)
 │   ├── main.py            # App factory, middleware stack, serves the built front end
 │   ├── routes/            # /api/keys, /api/hide, /api/reveal, /api/capacity, /api/preflight, /api/detect
@@ -53,10 +56,12 @@ StegoShield/
 │   ├── test_embed.py      # Embedding, extraction, and permutation tests
 │   └── test_security.py   # Full security and tampering validation
 ├── data/                  # Local datasets and evaluation samples
-├── models/                # Trained detector and risk models (.joblib)
+├── models/                # Trained detector (.joblib) and its held-out metrics
 ├── notebooks/             # Google Colab training and experimentation notebooks
 ├── docs/                  # Architecture and protocol specifications
-│   └── payload_format.md  # Binary payload specification
+│   ├── payload_format.md  # Binary payload specification
+│   ├── results.md         # Evaluation results: tables, figures, interpretation
+│   └── figures/           # Experiment figures (PNG)
 ├── app.py                 # Legacy Streamlit dashboard (superseded by api/ + frontend/)
 ├── Dockerfile             # Single production image: API + built front end
 ├── requirements.txt       # Python dependencies
@@ -128,6 +133,16 @@ Both scripts take `--seed` (default 2026); the same seed gives a byte-identical 
 python -m ml.train_detector   # -> models/detector.joblib + models/detector_metrics.json (~1 min)
 ```
 Splits train/test by source photo (80/20), so no photo's crops appear on both sides, then fits a calibrated Random Forest. `models/detector_metrics.json` has held-out ROC-AUC overall and per ratio, layout and algorithm. The trained model is committed, so the app works without this step.
+
+### 8. Run the Experiments
+```bash
+python -m experiments.quality          # PSNR / SSIM per payload ratio
+python -m experiments.detector_eval    # ROC curves + metrics per ratio, layout, algorithm
+python -m experiments.preflight_eval   # predicted risk vs actual detection, smooth vs textured
+python -m experiments.robustness       # PNG / JPEG / resize transport
+python -m experiments.security         # security test outcomes
+```
+Each script uses only the detector's held-out covers, takes `--seed`, and writes `experiments/results/*.csv` and `docs/figures/*.png`. Results and interpretation: [docs/results.md](docs/results.md).
 
 
 ---
