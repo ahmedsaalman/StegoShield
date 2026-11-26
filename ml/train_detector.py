@@ -9,7 +9,10 @@ Steps:
 3. Choose the forest's per-split feature share (max_features) by out-of-fold ROC-AUC,
    and sigmoid or isotonic calibration by Brier score, both on grouped validation
    folds inside the training split. The test split is never used for any choice.
-4. Fit the final CalibratedClassifierCV (one forest, ensemble=False, to keep the
+4. Choose the decision threshold on the same out-of-fold, calibrated training scores:
+   the lowest value (never below 0.5) that flags at most FALSE_ALARM_TARGET of clean
+   photos. Probabilities stay calibrated; only the yes/no cut moves.
+5. Fit the final CalibratedClassifierCV (one forest, ensemble=False, to keep the
    artifact small) and report held-out metrics overall and per slice.
 
 Usage:
@@ -45,7 +48,8 @@ DEFAULT_SEED = 2026
 ARTIFACT_FORMAT_VERSION = 1
 TEST_SIZE = 0.20
 CV_FOLDS = 5
-DECISION_THRESHOLD = 0.5
+DEFAULT_DECISION_THRESHOLD = 0.5  # floor: equal prior odds
+FALSE_ALARM_TARGET = 0.05  # flag at most 5 % of clean photos (estimated on training folds)
 TOP_IMPORTANCES = 15
 CALIBRATION_METHODS = ("sigmoid", "isotonic")
 SLICE_COLUMNS = ("ratio", "layout", "algorithm")
@@ -121,7 +125,10 @@ def train_detector(train: pd.DataFrame, seed: int = DEFAULT_SEED, forest_params:
         selection = choose_max_features(features, labels.to_numpy(), weights, folds, seed)
         forest_params = FOREST_PARAMS | {"max_features": selection["chosen"]}
 
-    method = choose_calibration_method(features, labels.to_numpy(), weights, folds, _forest(seed, forest_params))
+    raw_scores = out_of_fold_scores(features, labels.to_numpy(), weights, folds, _forest(seed, forest_params))
+    method = choose_calibration_method(raw_scores, labels.to_numpy(), weights, folds)
+    calibrated_scores = _calibrated_out_of_fold(method, raw_scores, labels.to_numpy(), weights, folds)
+    threshold_selection = choose_decision_threshold(calibrated_scores, labels.to_numpy())
     model = CalibratedClassifierCV(_forest(seed, forest_params), method=method, cv=folds, ensemble=False)
     model.fit(features, labels, sample_weight=weights)
 
@@ -133,6 +140,8 @@ def train_detector(train: pd.DataFrame, seed: int = DEFAULT_SEED, forest_params:
         "clean_feature_mean": clean.mean().to_numpy().tolist(),
         "clean_feature_std": clean.std().replace(0, 1).to_numpy().tolist(),
         "calibration_method": method,
+        "decision_threshold": threshold_selection["threshold"],
+        "threshold_selection": threshold_selection,
         "forest_params": {key: value for key, value in forest_params.items() if key != "n_jobs"},
         "max_features_selection": selection,
         "format_version": ARTIFACT_FORMAT_VERSION,
@@ -154,29 +163,65 @@ def choose_max_features(features: np.ndarray, labels: np.ndarray, weights: np.nd
     return {"chosen": best, "validation_roc_auc": scores}
 
 
-def choose_calibration_method(
+def out_of_fold_scores(
     features: np.ndarray, labels: np.ndarray, weights: np.ndarray, folds: list, forest: RandomForestClassifier
-) -> str:
-    """Pick the calibration with the lowest weighted Brier score on out-of-fold forest scores."""
-    raw_scores = cross_val_predict(
+) -> np.ndarray:
+    """Raw forest P(stego) for every training row, each predicted by a forest that never saw its source photo."""
+    return cross_val_predict(
         forest, features, labels, cv=folds, method="predict_proba", params={"sample_weight": weights}
     )[:, 1]
-    briers = {method: _calibrated_brier(method, raw_scores, labels, weights, folds) for method in CALIBRATION_METHODS}
+
+
+def choose_calibration_method(raw_scores: np.ndarray, labels: np.ndarray, weights: np.ndarray, folds: list) -> str:
+    """Pick the calibration with the lowest weighted Brier score on out-of-fold forest scores."""
+    briers = {
+        method: float(
+            brier_score_loss(
+                labels, _calibrated_out_of_fold(method, raw_scores, labels, weights, folds), sample_weight=weights
+            )
+        )
+        for method in CALIBRATION_METHODS
+    }
     return min(briers, key=briers.get)
+
+
+def choose_decision_threshold(
+    calibrated_scores: np.ndarray, labels: np.ndarray, false_alarm_target: float = FALSE_ALARM_TARGET
+) -> dict:
+    """Lowest threshold (>= 0.5) whose out-of-fold false-alarm rate on clean rows is within the target."""
+    clean = np.sort(calibrated_scores[labels == 0])
+    stego = calibrated_scores[labels == 1]
+    candidates = np.unique(np.append(calibrated_scores, DEFAULT_DECISION_THRESHOLD))
+    candidates = candidates[candidates >= DEFAULT_DECISION_THRESHOLD]
+    false_alarm_rates = (len(clean) - np.searchsorted(clean, candidates, side="left")) / max(len(clean), 1)
+    within_target = np.flatnonzero(false_alarm_rates <= false_alarm_target)
+    if within_target.size:
+        threshold = float(candidates[within_target[0]])
+    else:
+        threshold = float(np.nextafter(clean[-1], np.inf))  # flag nothing a clean training photo reached
+    return {
+        "threshold": threshold,
+        "false_alarm_target": false_alarm_target,
+        "out_of_fold_false_alarm_rate": float(np.mean(clean >= threshold)) if len(clean) else 0.0,
+        "out_of_fold_detection_rate": float(np.mean(stego >= threshold)) if len(stego) else 0.0,
+    }
 
 
 def evaluate_detector(artifact: dict, test: pd.DataFrame) -> dict:
     """Held-out metrics overall, per single slice column, and per full (ratio, layout, algorithm) combination."""
     probabilities = artifact["model"].predict_proba(test[FEATURE_NAMES].to_numpy())[:, 1]
     scored = test.assign(probability=probabilities)
+    threshold = artifact.get("decision_threshold", DEFAULT_DECISION_THRESHOLD)
     return {
-        "overall": _binary_metrics(scored),
-        "per_slice": _slice_metrics(scored),
+        "overall": _binary_metrics(scored, threshold),
+        "overall_at_default_threshold": _binary_metrics(scored, DEFAULT_DECISION_THRESHOLD),
+        "per_slice": _slice_metrics(scored, threshold),
         "top_feature_importances": top_importances(artifact),
         "calibration_method": artifact["calibration_method"],
         "forest_params": artifact.get("forest_params", {}),
         "max_features_selection": artifact.get("max_features_selection", {}),
-        "decision_threshold": DECISION_THRESHOLD,
+        "decision_threshold": threshold,
+        "threshold_selection": artifact.get("threshold_selection", {}),
         "n_test_rows": len(test),
     }
 
@@ -209,11 +254,14 @@ def _forest_of(model: CalibratedClassifierCV) -> RandomForestClassifier:
     return model.calibrated_classifiers_[0].estimator
 
 
-def _calibrated_brier(method: str, scores: np.ndarray, labels: np.ndarray, weights: np.ndarray, folds: list) -> float:
+def _calibrated_out_of_fold(
+    method: str, scores: np.ndarray, labels: np.ndarray, weights: np.ndarray, folds: list
+) -> np.ndarray:
+    """Calibrate each fold's scores with a calibrator fitted on the other folds."""
     calibrated = np.empty_like(scores)
     for fit_idx, eval_idx in folds:
         calibrated[eval_idx] = _fit_and_apply_calibrator(method, scores, labels, weights, fit_idx, eval_idx)
-    return float(brier_score_loss(labels, calibrated, sample_weight=weights))
+    return calibrated
 
 
 def _fit_and_apply_calibrator(
@@ -234,22 +282,22 @@ def _fit_and_apply_calibrator(
     return isotonic.predict(scores[eval_idx])
 
 
-def _slice_metrics(scored: pd.DataFrame) -> dict:
+def _slice_metrics(scored: pd.DataFrame, threshold: float) -> dict:
     """Each stego slice is scored against all clean test rows, so every slice is a balanced-ish binary task."""
     clean, stego = scored[scored["label"] == 0], scored[scored["label"] == 1]
     slices: dict[str, dict] = {}
     for column in SLICE_COLUMNS:
         for value, group in stego.groupby(column):
-            slices[f"{column}={value}"] = _binary_metrics(pd.concat([clean, group]))
+            slices[f"{column}={value}"] = _binary_metrics(pd.concat([clean, group]), threshold)
     for values, group in stego.groupby(list(SLICE_COLUMNS)):
         name = "|".join(f"{column}={value}" for column, value in zip(SLICE_COLUMNS, values, strict=True))
-        slices[name] = _binary_metrics(pd.concat([clean, group]))
+        slices[name] = _binary_metrics(pd.concat([clean, group]), threshold)
     return slices
 
 
-def _binary_metrics(scored: pd.DataFrame) -> dict:
+def _binary_metrics(scored: pd.DataFrame, threshold: float) -> dict:
     labels, probabilities = scored["label"].to_numpy(), scored["probability"].to_numpy()
-    predicted = (probabilities >= DECISION_THRESHOLD).astype(int)
+    predicted = (probabilities >= threshold).astype(int)
     weights = balanced_sample_weights(scored["label"])
     return {
         "roc_auc": float(roc_auc_score(labels, probabilities)),
@@ -257,6 +305,7 @@ def _binary_metrics(scored: pd.DataFrame) -> dict:
         "balanced_accuracy": float(accuracy_score(labels, predicted, sample_weight=weights)),
         "precision": float(precision_score(labels, predicted, zero_division=0)),
         "recall": float(recall_score(labels, predicted, zero_division=0)),
+        "false_alarm_rate": float(np.mean(predicted[labels == 0])) if (labels == 0).any() else 0.0,
         "brier": float(brier_score_loss(labels, probabilities, sample_weight=weights)),
         "n_clean": int((labels == 0).sum()),
         "n_stego": int((labels == 1).sum()),

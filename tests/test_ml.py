@@ -86,6 +86,16 @@ def test_detector_predicts_512px_image_in_under_one_second(tiny_model_path):
     assert time.perf_counter() - start < 1.0
 
 
+def test_detector_decides_with_the_threshold_stored_in_its_artifact(tiny_artifact, tmp_path):
+    path = tmp_path / "detector.joblib"
+    save_artifact(tiny_artifact | {"decision_threshold": 0.9}, path)
+
+    result = StegoDetector(path).predict(create_textured_image(64, 64))
+
+    assert result.threshold == 0.9
+    assert result.is_stego == (result.probability >= 0.9)
+
+
 def test_missing_model_raises_not_trained_error(tmp_path):
     with pytest.raises(DetectorNotTrainedError, match="python -m ml.train_detector"):
         StegoDetector(tmp_path / "absent.joblib")

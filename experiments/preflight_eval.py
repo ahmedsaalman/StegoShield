@@ -42,7 +42,7 @@ from experiments.common import (
     write_results,
 )
 from ml.dataset import ALGORITHMS
-from ml.detector import DEFAULT_DETECTOR_PATH, STEGO_THRESHOLD, StegoDetector
+from ml.detector import DEFAULT_DETECTOR_PATH, StegoDetector
 from ml.risk import PreflightChecker, RiskLevel
 
 KEY_MODE = "asymmetric"  # no PBKDF2 per trial; the embedded bits look the same in both modes
@@ -89,7 +89,7 @@ def evaluate_cover(cover: Image.Image, detector: StegoDetector, seed: int, cover
                     "predicted_probability": predicted.probability,
                     "predicted_level": predicted.level.value,
                     "actual_probability": actual_probability,
-                    "detected": actual_probability >= STEGO_THRESHOLD,
+                    "detected": actual_probability >= detector.threshold,
                     "texture_complexity": prediction.texture_complexity,
                     "seed": seed,
                 }

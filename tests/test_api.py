@@ -429,3 +429,16 @@ def test_front_end_routes_fall_back_to_index_html(analysis, tmp_path):
     assert "immutable" in asset.headers["cache-control"]
     assert api_miss.status_code == 404
     assert api_miss.headers["content-type"] == "application/json"
+
+
+@pytest.mark.parametrize(
+    ("probability", "threshold", "verdict"),
+    [(0.10, 0.9, "clean"), (0.88, 0.9, "likely_clean"), (0.92, 0.9, "stego"), (0.6, 0.5, "suspicious")],
+)
+def test_verdict_never_contradicts_the_detector_decision(probability, threshold, verdict):
+    from api.analysis import _verdict_for
+    from ml.detector import DetectionResult
+
+    result = DetectionResult(probability=probability, threshold=threshold, top_features=())
+
+    assert _verdict_for(result).value == verdict

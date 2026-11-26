@@ -22,7 +22,7 @@ from ml.features import FEATURE_NAMES, extract_features
 
 DEFAULT_DETECTOR_PATH = Path("models/detector.joblib")
 SUPPORTED_ARTIFACT_VERSION = 1
-STEGO_THRESHOLD = 0.5
+STEGO_THRESHOLD = 0.5  # fallback for artifacts trained before thresholds were tuned
 TOP_CONTRIBUTIONS = 5
 TRAIN_COMMAND = "python -m ml.train_detector"
 
@@ -81,14 +81,18 @@ class StegoDetector:
         self._clean_mean = np.asarray(artifact["clean_feature_mean"], dtype=np.float64)
         self._clean_std = np.asarray(artifact["clean_feature_std"], dtype=np.float64)
         self.calibration_method: str = artifact["calibration_method"]
+        self.threshold: float = float(artifact.get("decision_threshold", STEGO_THRESHOLD))
         self.trained_at: str = artifact["trained_at"]
 
-    def predict(self, image: Image.Image, threshold: float = STEGO_THRESHOLD) -> DetectionResult:
-        """Probability that the image hides data, plus the features that drove it."""
+    def predict(self, image: Image.Image, threshold: float | None = None) -> DetectionResult:
+        """Probability that the image hides data, plus the features that drove it.
+
+        The yes/no decision uses the threshold tuned at training time unless one is given.
+        """
         vector, _ = extract_features(image)
         return DetectionResult(
             probability=self._probability(vector),
-            threshold=threshold,
+            threshold=self.threshold if threshold is None else threshold,
             top_features=self._top_contributions(vector),
         )
 

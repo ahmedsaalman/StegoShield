@@ -37,7 +37,7 @@ from experiments.detector_eval import score_payload_variants
 from experiments.quality import quality_grid
 from experiments.robustness import MESSAGE_BYTES, TRANSPORT_LABELS, Transport, robustness_grid
 from ml.dataset import DEFAULT_SEED
-from ml.detector import STEGO_THRESHOLD, StegoDetector
+from ml.detector import StegoDetector
 
 # Each demo embeds the image many times (the detector comparison scores it 9 times), so
 # uploads are capped well below the general limit; 512 x 512 is the size the detector knows.
@@ -122,13 +122,13 @@ def lab_detector_comparison(image: Image.Image, detector: StegoDetector | None) 
     rows = score_payload_variants(cover, detector, DEFAULT_SEED, label=LAB_LABEL)
     return LabDetectorComparisonResponse(
         clean_probability=_probability(detector.predict_probability(cover)),
-        threshold=STEGO_THRESHOLD,
+        threshold=detector.threshold,
         points=[
             DetectorPoint(
                 algorithm=row["algorithm"],
                 payload_percent=_percent(row["ratio"]),
                 probability=_probability(row["probability"]),
-                is_detected=row["probability"] >= STEGO_THRESHOLD,
+                is_detected=row["probability"] >= detector.threshold,
             )
             for row in rows
         ],

@@ -1,5 +1,6 @@
 """Tests for detector training (ml/train_detector.py) on a small synthetic feature table."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -7,7 +8,9 @@ from ml.dataset import DEFAULT_VARIANTS
 from ml.features import FEATURE_NAMES
 from ml.train_detector import (
     CALIBRATION_METHODS,
+    DEFAULT_DECISION_THRESHOLD,
     balanced_sample_weights,
+    choose_decision_threshold,
     evaluate_detector,
     split_by_source,
 )
@@ -59,3 +62,39 @@ def test_calibrated_probabilities_are_valid(trained):
     split, artifact, _ = trained
     probabilities = artifact["model"].predict_proba(split.test[FEATURE_NAMES].to_numpy())[:, 1]
     assert ((probabilities >= 0) & (probabilities <= 1)).all()
+
+
+def test_threshold_keeps_false_alarms_within_target():
+    rng = np.random.default_rng(0)
+    scores = np.concatenate([rng.uniform(0, 1, 1000), rng.uniform(0.6, 1, 1000)])
+    labels = np.array([0] * 1000 + [1] * 1000)
+
+    selection = choose_decision_threshold(scores, labels, false_alarm_target=0.05)
+
+    assert np.mean(scores[labels == 0] >= selection["threshold"]) <= 0.05
+    assert selection["threshold"] == pytest.approx(0.95, abs=0.02)
+    assert selection["out_of_fold_detection_rate"] > 0.1
+
+
+def test_threshold_never_drops_below_equal_odds():
+    scores = np.array([0.1, 0.2, 0.3, 0.9, 0.95])
+    labels = np.array([0, 0, 0, 1, 1])
+
+    assert choose_decision_threshold(scores, labels)["threshold"] == DEFAULT_DECISION_THRESHOLD
+
+
+def test_threshold_flags_nothing_clean_when_target_is_unreachable():
+    scores = np.array([0.99, 0.99, 0.99, 0.99])
+    labels = np.array([0, 0, 1, 1])
+
+    selection = choose_decision_threshold(scores, labels, false_alarm_target=0.0)
+
+    assert selection["out_of_fold_false_alarm_rate"] == 0.0
+
+
+def test_artifact_and_metrics_carry_the_tuned_threshold(trained):
+    _, artifact, metrics = trained
+    assert artifact["decision_threshold"] >= DEFAULT_DECISION_THRESHOLD
+    assert metrics["decision_threshold"] == artifact["decision_threshold"]
+    assert "false_alarm_rate" in metrics["overall"]
+    assert "overall_at_default_threshold" in metrics

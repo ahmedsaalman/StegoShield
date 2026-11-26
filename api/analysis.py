@@ -161,13 +161,10 @@ class AnalysisService:
 
 
 def _verdict_for(result: DetectionResult) -> Verdict:
-    if result.probability >= STEGO_FROM_PROBABILITY:
-        return Verdict.STEGO
-    if result.is_stego:
-        return Verdict.SUSPICIOUS
-    if result.probability >= CLEAN_BELOW_PROBABILITY:
-        return Verdict.LIKELY_CLEAN
-    return Verdict.CLEAN
+    # The wording never contradicts the detector's own yes/no decision.
+    if not result.is_stego:
+        return Verdict.LIKELY_CLEAN if result.probability >= CLEAN_BELOW_PROBABILITY else Verdict.CLEAN
+    return Verdict.STEGO if result.probability >= STEGO_FROM_PROBABILITY else Verdict.SUSPICIOUS
 
 
 def _risk_method(simulated_bytes: int, fits: bool) -> str:
