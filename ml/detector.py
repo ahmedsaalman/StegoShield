@@ -1,182 +1,138 @@
-"""StegoShield Defensive AI Steganalysis Detector (Module D & Task L18).
+"""Steganalysis detector (Module D): P(hidden data) for an image, with an explanation.
 
-Provides:
-- Model loading from joblib files (e.g. models/detector.joblib).
-- Feature extraction & probability prediction.
-- Explainable AI anomaly breakdown (highlights anomalous statistical features).
-- Robust fallback heuristic classifier if no trained .joblib exists yet.
-- Training interface using scikit-learn RandomForestClassifier.
+Loads the calibrated Random Forest artifact written by ml/train_detector.py.
+There is deliberately no fallback: if the model is missing or was trained on a
+different feature set, loading fails with an error the UI can show.
+
+Explanation: for each feature, contribution = forest importance x how unusual
+the value is compared with clean training covers (|z-score|). The top few are
+reported as the features that drove this image's score.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import joblib
 import numpy as np
 from PIL import Image
-from sklearn.ensemble import RandomForestClassifier
 
-from ml.features import FEATURE_NAMES, channel_means, extract_features
+from ml.features import FEATURE_NAMES, extract_features
 
 DEFAULT_DETECTOR_PATH = Path("models/detector.joblib")
+SUPPORTED_ARTIFACT_VERSION = 1
+STEGO_THRESHOLD = 0.5
+TOP_CONTRIBUTIONS = 5
+TRAIN_COMMAND = "python -m ml.train_detector"
+
+
+class DetectorError(Exception):
+    """Base class for detector loading problems."""
+
+
+class DetectorNotTrainedError(DetectorError):
+    """No trained model file exists yet."""
+
+
+class ModelMismatchError(DetectorError):
+    """The model file doesn't match the current feature extractor or artifact format."""
+
+
+@dataclass(frozen=True)
+class FeatureContribution:
+    """How much one feature pushed this image's score, and why."""
+
+    feature: str
+    value: float
+    typical_clean_value: float
+    z_score: float
+    importance: float
+    contribution: float
+
+
+@dataclass(frozen=True)
+class DetectionResult:
+    """Detector verdict for one image."""
+
+    probability: float
+    threshold: float
+    top_features: tuple[FeatureContribution, ...]
+
+    @property
+    def is_stego(self) -> bool:
+        """True when the probability reaches the decision threshold."""
+        return self.probability >= self.threshold
 
 
 class StegoDetector:
-    """Defensive Steganalysis AI Detector."""
+    """Calibrated Random Forest steganalysis detector."""
 
-    def __init__(self, model_path: Path | str | None = None):
-        self.model: RandomForestClassifier | None = None
-        self.model_path = Path(model_path) if model_path else DEFAULT_DETECTOR_PATH
-        self.is_heuristic = False
+    def __init__(self, model_path: Path = DEFAULT_DETECTOR_PATH):
+        """Load and validate the model artifact.
 
-        if self.model_path.exists():
-            self._load_model(self.model_path)
-        else:
-            self.is_heuristic = True
+        Raises:
+            DetectorNotTrainedError: If the model file doesn't exist.
+            ModelMismatchError: If the artifact's features or format don't match this code.
+        """
+        artifact = load_detector_artifact(model_path)
+        self._model = artifact["model"]
+        self._importances = np.asarray(artifact["feature_importances"], dtype=np.float64)
+        self._clean_mean = np.asarray(artifact["clean_feature_mean"], dtype=np.float64)
+        self._clean_std = np.asarray(artifact["clean_feature_std"], dtype=np.float64)
+        self.calibration_method: str = artifact["calibration_method"]
+        self.trained_at: str = artifact["trained_at"]
 
-    def _load_model(self, path: Path) -> None:
-        """Load trained model dictionary from joblib."""
-        data = joblib.load(path)
-        if isinstance(data, dict) and "model" in data:
-            self.model = data["model"]
-        elif hasattr(data, "predict_proba"):
-            self.model = data
-        else:
-            raise ValueError(f"Loaded object from {path} does not have a predict_proba method.")
-        self.is_heuristic = False
-
-    def train_and_save(
-        self,
-        X: np.ndarray,
-        y: np.ndarray,
-        save_path: Path | str | None = None,
-        n_estimators: int = 150,
-        random_state: int = 42,
-    ) -> None:
-        """Train a Random Forest classifier and save to joblib."""
-        clf = RandomForestClassifier(
-            n_estimators=n_estimators,
-            max_depth=12,
-            min_samples_split=4,
-            class_weight="balanced",
-            random_state=random_state,
-            n_jobs=-1,
+    def predict(self, image: Image.Image, threshold: float = STEGO_THRESHOLD) -> DetectionResult:
+        """Probability that the image hides data, plus the features that drove it."""
+        vector, _ = extract_features(image)
+        return DetectionResult(
+            probability=self._probability(vector),
+            threshold=threshold,
+            top_features=self._top_contributions(vector),
         )
-        clf.fit(X, y)
-        self.model = clf
-        self.is_heuristic = False
 
-        target_path = Path(save_path) if save_path else self.model_path
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"model": clf, "feature_names": FEATURE_NAMES}, target_path)
+    def predict_probability(self, image: Image.Image) -> float:
+        """Probability that the image hides data (calibrated, at equal prior odds)."""
+        vector, _ = extract_features(image)
+        return self._probability(vector)
 
-    def _heuristic_predict(self, feat_dict: dict[str, float]) -> float:
-        """Rule-based statistical heuristic when no ML model is yet loaded.
+    def _probability(self, vector: np.ndarray) -> float:
+        return float(self._model.predict_proba(vector.reshape(1, -1))[0, 1])
 
-        Evaluates Chi-Square p-value, LSB transition rate, and horizontal difference kurtosis.
-        """
-        score = 0.0
-
-        # 1. Chi-square attack p-value < 0.01 indicates significant PoV pairing
-        p_val = feat_dict.get("chi_square_p_value", 1.0)
-        chi_norm = feat_dict.get("chi_square_norm", 0.0)
-        if p_val < 0.01:
-            score += 0.45
-        elif p_val < 0.05:
-            score += 0.30
-
-        if chi_norm > 2.0:
-            score += 0.20
-
-        # 2. LSB horizontal transition rate in random stego converges to ~0.50
-        h_rate = feat_dict.get("lsb_horiz_transition_rate", 0.5)
-        # In natural images, h_rate is typically lower (0.25 - 0.42)
-        if 0.48 <= h_rate <= 0.52:
-            score += 0.30
-        elif 0.45 <= h_rate <= 0.55:
-            score += 0.15
-
-        # 3. LSB mean deviation from 0.50 (clean images are often 0.40 - 0.60, random stego is 0.495 - 0.505)
-        lsb_mean = feat_dict.get("lsb_mean", 0.5)
-        if 0.49 <= lsb_mean <= 0.51:
-            score += 0.15
-
-        return min(0.99, max(0.01, score))
-
-    def predict_probability(self, image: Image.Image) -> tuple[float, dict[str, float]]:
-        """Compute the probability [0.0, 1.0] that the image contains hidden data.
-
-        Returns:
-            tuple[float, dict[str, float]]: (stego_probability, extracted_features)
-        """
-        vec, channel_feats = extract_features(image)
-        feat_dict = channel_means(channel_feats)  # heuristics read channel-averaged values
-
-        if self.model is not None and not self.is_heuristic:
-            # Predict using trained scikit-learn Random Forest
-            prob = float(self.model.predict_proba(vec.reshape(1, -1))[0, 1])
-        else:
-            prob = self._heuristic_predict(feat_dict)
-
-        return prob, feat_dict
-
-    def predict(self, image: Image.Image, threshold: float = 0.50) -> dict[str, Any]:
-        """Perform comprehensive steganalysis with explainability breakdown."""
-        prob, feat_dict = self.predict_probability(image)
-        is_stego = prob >= threshold
-
-        if prob >= 0.85:
-            confidence = "High Confidence Stego"
-            risk_badge = "🔴 Anomaly Detected"
-        elif prob >= threshold:
-            confidence = "Moderate Confidence Stego"
-            risk_badge = "🟠 Suspicious"
-        elif prob >= 0.25:
-            confidence = "Likely Clean"
-            risk_badge = "🟡 Low Probability"
-        else:
-            confidence = "High Confidence Clean"
-            risk_badge = "🟢 Clean Carrier"
-
-        # Highlight key contributing indicators
-        anomalies = []
-        if feat_dict.get("chi_square_p_value", 1.0) < 0.05:
-            anomalies.append(
-                {
-                    "metric": "Chi-Square Test",
-                    "finding": "Asymmetric Pair-of-Values (PoV) distribution detected",
-                    "p_value": f"{feat_dict['chi_square_p_value']:.4e}",
-                }
+    def _top_contributions(self, vector: np.ndarray, count: int = TOP_CONTRIBUTIONS) -> tuple[FeatureContribution, ...]:
+        z_scores = (vector - self._clean_mean) / self._clean_std
+        contributions = self._importances * np.abs(z_scores)
+        order = np.argsort(contributions)[::-1][:count]
+        return tuple(
+            FeatureContribution(
+                feature=FEATURE_NAMES[i],
+                value=float(vector[i]),
+                typical_clean_value=float(self._clean_mean[i]),
+                z_score=float(z_scores[i]),
+                importance=float(self._importances[i]),
+                contribution=float(contributions[i]),
             )
-        if 0.47 <= feat_dict.get("lsb_horiz_transition_rate", 0.0) <= 0.53:
-            anomalies.append(
-                {
-                    "metric": "LSB Spatial Autocorrelation",
-                    "finding": "Near-random horizontal bit transition rate (~50%)",
-                    "rate": f"{feat_dict['lsb_horiz_transition_rate']:.3f}",
-                }
-            )
-        if 0.49 <= feat_dict.get("lsb_mean", 0.0) <= 0.51:
-            anomalies.append(
-                {
-                    "metric": "LSB Bit-Plane Uniformity",
-                    "finding": "LSB mean is balanced close to 0.500 (typical of ciphertext)",
-                    "mean": f"{feat_dict['lsb_mean']:.3f}",
-                }
-            )
+            for i in order
+        )
 
-        return {
-            "is_stego": is_stego,
-            "probability": prob,
-            "probability_percent": f"{prob * 100:.1f}%",
-            "confidence": confidence,
-            "badge": risk_badge,
-            "threshold": threshold,
-            "model_type": (
-                "Trained Random Forest" if (self.model and not self.is_heuristic) else "Statistical Heuristic Baseline"
-            ),
-            "features": feat_dict,
-            "anomalies": anomalies,
-        }
+
+def load_detector_artifact(model_path: Path = DEFAULT_DETECTOR_PATH) -> dict:
+    """Load the joblib artifact and check it matches the current feature extractor.
+
+    Raises:
+        DetectorNotTrainedError: If the file doesn't exist.
+        ModelMismatchError: If feature names or artifact version differ.
+    """
+    model_path = Path(model_path)
+    if not model_path.exists():
+        raise DetectorNotTrainedError(f"No trained detector at {model_path}. Train one with `{TRAIN_COMMAND}`.")
+    artifact = joblib.load(model_path)
+    if not isinstance(artifact, dict) or artifact.get("format_version") != SUPPORTED_ARTIFACT_VERSION:
+        raise ModelMismatchError(f"{model_path} is not a version-{SUPPORTED_ARTIFACT_VERSION} detector artifact.")
+    if artifact.get("feature_names") != FEATURE_NAMES:
+        raise ModelMismatchError(
+            f"{model_path} was trained on a different feature set than ml/features.py provides. "
+            f"Retrain with `{TRAIN_COMMAND}`."
+        )
+    return artifact

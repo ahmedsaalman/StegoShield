@@ -118,9 +118,15 @@ If `models/detector.joblib` is missing or was trained on a different feature set
 ### 6. Build the Detector Dataset
 ```bash
 python -m ml.prepare_covers   # downloads DIV2K validation set if missing, cuts 500 covers (5 per photo) into data/covers/
-python -m ml.dataset          # 500 clean + 8,000 stego rows -> data/features/features.csv (~10 min on 7 cores)
+python -m ml.dataset          # 500 clean + 8,000 stego rows -> data/features/features.csv (~17 min on 7 cores)
 ```
 Both scripts take `--seed` (default 2026); the same seed gives a byte-identical CSV. Data folders are git-ignored.
+
+### 7. Train the Detector
+```bash
+python -m ml.train_detector   # -> models/detector.joblib + models/detector_metrics.json (~1 min)
+```
+Splits train/test by source photo (80/20), so no photo's crops appear on both sides, then fits a calibrated Random Forest. `models/detector_metrics.json` has held-out ROC-AUC overall and per ratio, layout and algorithm. The trained model is committed, so the app works without this step.
 
 
 ---

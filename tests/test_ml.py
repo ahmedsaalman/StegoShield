@@ -2,17 +2,26 @@
 
 Verifies:
 - Feature extraction returns every per-channel feature without NaNs or Infs.
-- StegoDetector runs inference, bounds probabilities [0.0, 1.0], and produces anomaly breakdowns.
+- StegoDetector loads a trained artifact, rejects mismatched ones, and explains its score.
 - PreFlightRiskScorer correctly scores smooth vs textured images.
 """
+
+import time
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from ml.detector import StegoDetector
-from ml.features import CHANNEL_FEATURE_NAMES, CHANNELS, FEATURE_NAMES, extract_features
+from ml.detector import DetectorNotTrainedError, ModelMismatchError, StegoDetector
+from ml.features import (
+    CHANNEL_FEATURE_NAMES,
+    CHANNELS,
+    FEATURE_NAMES,
+    extract_features,
+    extract_sample_pairs_features,
+)
 from ml.risk import PreFlightRiskScorer
+from ml.train_detector import save_artifact
 
 
 def create_smooth_image(width=128, height=128) -> Image.Image:
@@ -47,19 +56,44 @@ def test_feature_extraction_completeness_and_validity():
         assert isinstance(feat_dict[name], (int, float))
 
 
-def test_stego_detector_inference():
-    """Verify StegoDetector inference and response structure."""
-    detector = StegoDetector()
-    img = create_smooth_image(128, 128)
+def test_detector_predicts_probability_and_top_features(tiny_model_path):
+    detector = StegoDetector(tiny_model_path)
+    result = detector.predict(create_textured_image(128, 128))
 
-    result = detector.predict(img)
-    assert "probability" in result
-    assert 0.0 <= result["probability"] <= 1.0
-    assert "is_stego" in result
-    assert "confidence" in result
-    assert "badge" in result
-    assert "anomalies" in result
-    assert isinstance(result["features"], dict)
+    assert 0.0 <= result.probability <= 1.0
+    assert result.is_stego == (result.probability >= result.threshold)
+    assert len(result.top_features) == 5
+    contributions = [c.contribution for c in result.top_features]
+    assert contributions == sorted(contributions, reverse=True)
+    assert all(c.feature in FEATURE_NAMES for c in result.top_features)
+
+
+def test_detector_predicts_512px_image_in_under_one_second(tiny_model_path):
+    detector = StegoDetector(tiny_model_path)
+    image = create_textured_image(512, 512)
+    start = time.perf_counter()
+    detector.predict(image)
+    assert time.perf_counter() - start < 1.0
+
+
+def test_missing_model_raises_not_trained_error(tmp_path):
+    with pytest.raises(DetectorNotTrainedError, match="python -m ml.train_detector"):
+        StegoDetector(tmp_path / "absent.joblib")
+
+
+def test_model_with_different_feature_names_is_rejected(tiny_artifact, tmp_path):
+    stale = tiny_artifact | {"feature_names": [*FEATURE_NAMES[:-1], "renamed_feature_b"]}
+    path = tmp_path / "stale.joblib"
+    save_artifact(stale, path)
+    with pytest.raises(ModelMismatchError, match="different feature set"):
+        StegoDetector(path)
+
+
+def test_model_with_unknown_artifact_version_is_rejected(tiny_artifact, tmp_path):
+    path = tmp_path / "future.joblib"
+    save_artifact(tiny_artifact | {"format_version": 99}, path)
+    with pytest.raises(ModelMismatchError):
+        StegoDetector(path)
 
 
 def test_preflight_risk_scorer_differentiation():
@@ -104,3 +138,18 @@ def test_lsb_change_in_one_channel_only_moves_that_channels_lsb_features():
     assert before["lsb_mean_r"] != after["lsb_mean_r"]
     assert before["lsb_mean_g"] == after["lsb_mean_g"]
     assert before["lsb_mean_b"] == after["lsb_mean_b"]
+
+
+def test_sample_pairs_estimate_tracks_lsb_replacement_rate():
+    """SPA should read ~0 on a natural-looking cover and ~the true rate after LSB replacement."""
+    rng = np.random.default_rng(3)
+    smooth = np.cumsum(rng.normal(0, 2, size=(256, 256)), axis=1) + np.linspace(60, 180, 256)[:, None]
+    plane = np.clip(smooth + rng.normal(0, 1.5, size=smooth.shape), 0, 255).astype(np.uint8)
+    stego = plane.copy()
+    carries_bit = rng.random(plane.shape) < 0.5  # embedding rate 0.5: half the pixels hold a message bit
+    stego[carries_bit] = (stego[carries_bit] & 0xFE) | rng.integers(0, 2, size=int(carries_bit.sum()), dtype=np.uint8)
+
+    clean_rate = extract_sample_pairs_features(plane)["spa_rate"]
+    stego_rate = extract_sample_pairs_features(stego)["spa_rate"]
+    assert abs(clean_rate) < 0.1
+    assert abs(stego_rate - 0.5) < 0.1

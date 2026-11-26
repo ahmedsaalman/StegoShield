@@ -1,76 +1,25 @@
-"""StegoShield Pre-Flight Cover Image Risk & Capacity Scorer (Module B & Task L19).
+"""Pre-flight cover image check (Module B): capacity and a texture-based risk estimate.
 
-Evaluates candidate cover images before embedding data:
-- Extracts spatial texture, edge energy, Laplacian variance, and histogram entropy.
-- Computes predicted detectability risk score [0.0, 1.0] using trained Random Forest
-  Regressor (or multi-factor complexity model if .joblib not yet present).
-- Categorizes risk into Low / Medium / High with visual UI color coding.
-- Computes recommended safe payload byte thresholds.
+Interim version. The risk score here is a hand-tuned texture/edge/entropy
+formula, labelled as such in its output. Phase 4 replaces it with the
+detector-in-the-loop check (embed a test payload, ask the trained detector).
+The separate risk regressor from the original proposal is out of scope and
+has been removed.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-import joblib
 import numpy as np
 from PIL import Image
-from sklearn.ensemble import RandomForestRegressor
 
 from core.capacity import calculate_image_capacity, compute_payload_ratio
-from ml.features import FEATURE_NAMES, channel_means, extract_features
-
-DEFAULT_RISK_MODEL_PATH = Path("models/risk_model.joblib")
+from ml.features import channel_means, extract_features
 
 
 class PreFlightRiskScorer:
     """Evaluates cover image detectability risk before steganographic embedding."""
-
-    def __init__(self, model_path: Path | str | None = None):
-        self.model: RandomForestRegressor | None = None
-        self.model_path = Path(model_path) if model_path else DEFAULT_RISK_MODEL_PATH
-        self.is_heuristic = False
-
-        if self.model_path.exists():
-            self._load_model(self.model_path)
-        else:
-            self.is_heuristic = True
-
-    def _load_model(self, path: Path) -> None:
-        """Load trained regressor from joblib."""
-        data = joblib.load(path)
-        if isinstance(data, dict) and "model" in data:
-            self.model = data["model"]
-        elif hasattr(data, "predict"):
-            self.model = data
-        else:
-            raise ValueError(f"Loaded object from {path} does not have a predict method.")
-        self.is_heuristic = False
-
-    def train_and_save(
-        self,
-        X: np.ndarray,
-        y: np.ndarray,
-        save_path: Path | str | None = None,
-        n_estimators: int = 150,
-        random_state: int = 42,
-    ) -> None:
-        """Train a Random Forest regressor and save to joblib."""
-        reg = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=10,
-            min_samples_split=4,
-            random_state=random_state,
-            n_jobs=-1,
-        )
-        reg.fit(X, y)
-        self.model = reg
-        self.is_heuristic = False
-
-        target_path = Path(save_path) if save_path else self.model_path
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"model": reg, "feature_names": FEATURE_NAMES}, target_path)
 
     def _heuristic_risk(self, feat_dict: dict[str, float], payload_ratio: float) -> float:
         """Multi-factor texture complexity & capacity model.
@@ -123,15 +72,10 @@ class PreFlightRiskScorer:
         total_slots = capacity["total_carrier_bits"]
         payload_ratio = compute_payload_ratio(target_payload_bytes, total_slots) if target_payload_bytes > 0 else 0.0
 
-        vec, channel_feats = extract_features(image)
+        _, channel_feats = extract_features(image)
         feat_dict = channel_means(channel_feats)  # heuristics read channel-averaged values
 
-        if self.model is not None and not self.is_heuristic:
-            # Predict with trained regressor
-            risk_score = float(self.model.predict(vec.reshape(1, -1))[0])
-            risk_score = float(np.clip(risk_score, 0.0, 1.0))
-        else:
-            risk_score = self._heuristic_risk(feat_dict, payload_ratio)
+        risk_score = self._heuristic_risk(feat_dict, payload_ratio)
 
         # Categorize into Low / Medium / High
         if risk_score < 0.35:
@@ -180,11 +124,7 @@ class PreFlightRiskScorer:
             "capacity": capacity,
             "target_payload_bytes": target_payload_bytes,
             "payload_ratio_percent": f"{payload_ratio * 100:.2f}%" if target_payload_bytes > 0 else "N/A",
-            "model_type": (
-                "Trained Regressor (.joblib)"
-                if (self.model and not self.is_heuristic)
-                else "Multi-Factor Complexity Engine"
-            ),
+            "model_type": "Texture heuristic (interim, replaced by detector-in-the-loop in Phase 4)",
             "features": {
                 "laplacian_variance": f"{feat_dict.get('img_laplacian_var', 0):.1f}",
                 "edge_energy": f"{feat_dict.get('img_sobel_edge_energy', 0):.2f}",

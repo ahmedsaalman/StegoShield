@@ -10,6 +10,9 @@ Feature families (per channel):
 3. First-Order Difference Residuals (horizontal, vertical, diagonal gradients).
 4. Spatial Co-occurrence Matrix Statistics (transitions, contrast, homogeneity, entropy).
 5. Cover Image Complexity Metrics (Laplacian variance, Sobel edge energy, image entropy).
+6. Sample Pairs Analysis (Dumitrescu, Wu & Wang 2003): an estimate of the LSB-replacement
+   embedding rate. Unlike families 1-5 it is relative to the image itself, so it
+   separates clean and stego images even when covers differ a lot.
 
 Used jointly by:
 - Defensive AI Detector (Module D)
@@ -57,6 +60,8 @@ CHANNEL_FEATURE_NAMES = [
     "img_laplacian_var",
     "img_sobel_edge_energy",
     "img_histogram_entropy",
+    # Sample Pairs Analysis
+    "spa_rate",
 ]
 
 # Single source of truth for feature order: "<feature>_<channel>", grouped by channel.
@@ -237,6 +242,33 @@ def extract_features(image: Image.Image) -> tuple[np.ndarray, dict[str, float]]:
     return vec, feat_dict
 
 
+def extract_sample_pairs_features(plane: np.ndarray) -> dict[str, float]:
+    """Sample Pairs Analysis estimate of the LSB-replacement rate, over horizontal and vertical pairs.
+
+    Solves (|W|+|Z|)/2 * p^2 + (2|X| - |P|) * p + |Y| - |X| = 0 for the smaller root p,
+    where for each pair (u, v): X = v even and u < v, or v odd and u > v; Y = the
+    mirror case; Z = equal values; W = values differing only in the LSB. Clean
+    images give p near 0, a fully embedded image near 1.
+    """
+    image = plane.astype(np.int32)
+    left = np.concatenate([image[:, :-1].ravel(), image[:-1, :].ravel()])
+    right = np.concatenate([image[:, 1:].ravel(), image[1:, :].ravel()])
+    right_is_even = right % 2 == 0
+    x_count = np.sum((right_is_even & (left < right)) | (~right_is_even & (left > right)))
+    y_count = np.sum((right_is_even & (left > right)) | (~right_is_even & (left < right)))
+    z_count = np.sum(left == right)
+    w_count = np.sum((left // 2 == right // 2) & (left != right))
+    return {"spa_rate": _smaller_quadratic_root((w_count + z_count) / 2, 2 * x_count - len(left), y_count - x_count)}
+
+
+def _smaller_quadratic_root(a: float, b: float, c: float) -> float:
+    # A non-real root means the pair statistics show no replacement signature: report 0.
+    discriminant = b * b - 4 * a * c
+    if a == 0 or discriminant < 0:
+        return 0.0
+    return float((-b - np.sqrt(discriminant)) / (2 * a))
+
+
 def extract_channel_features(plane: np.ndarray) -> dict[str, float]:
     """All CHANNEL_FEATURE_NAMES for one 2D uint8 channel."""
     features: dict[str, float] = {}
@@ -245,6 +277,7 @@ def extract_channel_features(plane: np.ndarray) -> dict[str, float]:
     features.update(extract_residual_features(plane))
     features.update(extract_cooccurrence_features(plane))
     features.update(extract_complexity_features(plane))
+    features.update(extract_sample_pairs_features(plane))
     return features
 
 

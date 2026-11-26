@@ -30,7 +30,7 @@ from core.pipeline import (
     stego_encode_asymmetric,
     stego_encode_password,
 )
-from ml.detector import StegoDetector
+from ml.detector import DetectorError, StegoDetector
 from ml.risk import PreFlightRiskScorer
 
 # Page Configuration
@@ -108,8 +108,12 @@ if "stego_result_image" not in st.session_state:
 
 # Cached Models
 @st.cache_resource
-def get_detector() -> StegoDetector:
-    return StegoDetector()
+def get_detector() -> StegoDetector | DetectorError:
+    """The trained detector, or the error explaining why it can't be loaded."""
+    try:
+        return StegoDetector()
+    except DetectorError as error:
+        return error
 
 
 @st.cache_resource
@@ -501,7 +505,9 @@ with tab_detector:
         key="detect_uploader",
     )
 
-    if detect_file is not None:
+    if isinstance(detector, DetectorError):
+        st.info(f"The detector isn't ready: {detector}")
+    elif detect_file is not None:
         suspect_img = Image.open(detect_file)
 
         col_d_img, col_d_results = st.columns([1, 2])
@@ -511,29 +517,27 @@ with tab_detector:
 
         with col_d_results:
             if st.button("🔍 Run Steganalysis Scan", type="primary"):
-                with st.spinner("Extracting 27 feature statistics and running detector..."):
+                with st.spinner("Extracting per-channel features and running the detector..."):
                     result = detector.predict(suspect_img)
 
-                st.subheader(f"Detection Verdict: {result['badge']}")
-                prob = result["probability"]
-
-                p_col1, p_col2 = st.columns([1, 2])
-                with p_col1:
-                    st.metric("Stego Probability", result["probability_percent"])
-                    st.progress(prob)
-                with p_col2:
-                    st.write(f"**Confidence Level:** {result['confidence']}")
-                    st.write(f"**Detector Engine:** `{result['model_type']}`")
+                verdict = "🔴 Hidden data likely" if result.is_stego else "🟢 No hidden data detected"
+                st.subheader(f"Verdict: {verdict} · {result.probability:.0%}")
+                st.progress(result.probability)
+                st.caption(
+                    f"Calibrated Random Forest ({detector.calibration_method}), trained {detector.trained_at}. "
+                    f"Decision threshold {result.threshold:.0%}."
+                )
 
                 st.divider()
-                st.subheader("Statistical Anomaly Indicators")
-                if result["anomalies"]:
-                    for a in result["anomalies"]:
-                        st.warning(f"⚠️ **{a['metric']}**: {a['finding']}")
-                else:
-                    st.success(
-                        "✅ No statistical anomalies found. Pairs-of-values and bit-plane transitions reflect clean carrier characteristics."
-                    )
-
-                with st.expander("📊 Complete 27-Feature Inspection"):
-                    st.json(result["features"])
+                st.subheader("Features that drove this score")
+                st.table(
+                    [
+                        {
+                            "Feature": c.feature,
+                            "This image": f"{c.value:.4g}",
+                            "Typical clean image": f"{c.typical_clean_value:.4g}",
+                            "Deviation (z)": f"{c.z_score:+.1f}",
+                        }
+                        for c in result.top_features
+                    ]
+                )

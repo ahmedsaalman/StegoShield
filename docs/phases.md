@@ -24,7 +24,7 @@ This is the authoritative definition of the development phases. Scope comes from
 | 0 | Setup & hygiene | all | none | ½ day | ✅ |
 | 1 | Secure format v2 | A, C | 0 | 1 day | ✅ |
 | 2 | Dataset | D | 0 | ½–1 day | ✅ |
-| 3 | Detector | D | 2 | 1 day | ⬜ |
+| 3 | Detector | D | 2 | 1 day | ✅ |
 | 4 | Pre-flight check | B | 1, 3 | ½ day | ⬜ |
 | 5 | Experiments | all | 1, 3, 4 | 1 day | ⬜ |
 | 6 | Web app + Evaluation Lab | UI, API | 4, 5 | 2 days | 🟡 |
@@ -156,28 +156,32 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 ---
 
-## Phase 3: Detector ⬜
+## Phase 3: Detector ✅
 
 **Goal:** A calibrated Random Forest that outputs P(stego) for an image, with honest held-out metrics.
 
 **Depends on:** 2
 
 **Tasks:**
-- [ ] `ml/train_detector.py`: split by `source_id` (`GroupShuffleSplit`, 80/20, fixed seed), so no photo (and none of its 5 crops) appears in both train and test.
-- [ ] Balance classes (class weights, or sample one stego variant per cover per epoch; document which).
-- [ ] Random Forest → `CalibratedClassifierCV` (isotonic or sigmoid, chosen on validation folds).
-- [ ] Save the artifact as a dict: `{model, feature_names, format_version, trained_at, seed}`. The loader rejects artifacts whose `feature_names` differ from the current `FEATURE_NAMES`.
-- [ ] Save `models/detector_metrics.json`: accuracy, precision, recall, ROC-AUC overall and per {ratio, layout, algorithm}, plus top-15 feature importances.
-- [ ] Remove the risk regressor path from `ml/risk.py` (out of scope).
+- [x] `ml/train_detector.py`: split by `source_id` (`GroupShuffleSplit`, 80/20, fixed seed), so no photo (and none of its 5 crops) appears in both train and test.
+- [x] Balance classes (class weights, or sample one stego variant per cover per epoch; document which). *Sample weights: each clean row weighs 16, so both classes carry equal total weight.*
+- [x] Random Forest → `CalibratedClassifierCV` (isotonic or sigmoid, chosen on validation folds).
+- [x] Save the artifact as a dict: `{model, feature_names, format_version, trained_at, seed}`. The loader rejects artifacts whose `feature_names` differ from the current `FEATURE_NAMES`.
+- [x] Save `models/detector_metrics.json`: accuracy, precision, recall, ROC-AUC overall and per {ratio, layout, algorithm}, plus top-15 feature importances.
+- [x] Remove the risk regressor path from `ml/risk.py` (out of scope).
 
 **Deliverables:** `ml/train_detector.py`, `models/detector.joblib`, `models/detector_metrics.json`, updated `ml/detector.py`
 
 **Exit criteria:**
-- [ ] Test: train and test `source_id` sets (and therefore `cover_id` sets) are disjoint.
-- [ ] Test-set ROC-AUC is reported for every slice in the metrics JSON.
-- [ ] Sanity check: ROC-AUC ≥ 0.90 for 50 % sequential replacement. If it is lower, features or labels are broken, so investigate before moving on.
-- [ ] Loading a model with mismatched feature names raises a clear error.
-- [ ] `StegoDetector.predict(image)` returns probability + top contributing features in < 1 s for 512×512.
+- [x] Test: train and test `source_id` sets (and therefore `cover_id` sets) are disjoint.
+- [x] Test-set ROC-AUC is reported for every slice in the metrics JSON.
+- [x] Sanity check: ROC-AUC ≥ 0.90 for 50 % sequential replacement. If it is lower, features or labels are broken, so investigate before moving on.
+- [x] Loading a model with mismatched feature names raises a clear error.
+- [x] `StegoDetector.predict(image)` returns probability + top contributing features in < 1 s for 512×512.
+
+*Results (seed 2026, 20 held-out source photos):* 50 % sequential replacement ROC-AUC 0.998; LSB replacement overall 0.93; LSB matching ≈ 0.53 at every ratio. Matching is close to undetectable with these hand-crafted features, which is a known result and the reason matching is the safer option. Overall ROC-AUC is 0.73 because half the stego rows use matching.
+
+*Added during this phase:* a per-channel Sample Pairs Analysis feature (`spa_rate_r/g/b`). The first model reached only 0.75 on the sanity slice: whole-image statistics vary about 25× more between photos than embedding changes them. SPA estimates the embedding rate *relative to the image itself*, and is now the top feature.
 
 **Not in this phase:** CNNs, hyper-parameter sweeps beyond a small grid.
 
