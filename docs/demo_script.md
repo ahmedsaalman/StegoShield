@@ -14,7 +14,7 @@ Every "Expected" line below comes from a dry run on the demo cover (`0854_0`, a 
    cd "IS PROJECT" && make install && make serve      # http://127.0.0.1:8000
    ```
    No network is needed after installation. Everything runs locally.
-2. **Prepare the demo folder** (cover, message, and a pre-made LSB-replacement image for the detector contrast):
+2. **Prepare the demo folder** (cover, a ~3.8 KB message to hide live, and pre-made ~8.6 KB replacement/matching images for the detector contrast):
    ```bash
    mkdir -p ~/Desktop/stegoshield-demo
    cp data/covers/0854_0.png ~/Desktop/stegoshield-demo/cover.png
@@ -22,10 +22,11 @@ Every "Expected" line below comes from a dry run on the demo cover (`0854_0`, a 
    from pathlib import Path
    from core.pipeline import stego_encode_password
    demo = Path.home() / "Desktop/stegoshield-demo"
-   message = "Meet at the library at 5pm. Bring the notes. " * 190      # ~8.6 KB
-   (demo / "message.txt").write_text(message)
+   line = "Meet at the library at 5pm. Bring the notes. "
+   (demo / "message.txt").write_text(line * 85)                    # ~3.8 KB: rated Low, hidden live
+   contrast = line * 190                                           # ~8.6 KB: for the detector contrast
    for algorithm in ("replacement", "matching"):
-       stego = stego_encode_password(demo / "cover.png", message, "demo password 2026", algorithm=algorithm)
+       stego = stego_encode_password(demo / "cover.png", contrast, "demo password 2026", algorithm=algorithm)
        stego.save(demo / f"stego-{algorithm}.png")
    EOF
    ```
@@ -55,12 +56,14 @@ Show the **Overview** page briefly.
 **Do:** copy the public key.
 
 ### 3. Pre-flight check (1:45 → 3:15)
-**Do:** **Pre-flight** → drop `cover.png` → protection *Recipient's public key* → size **9000** bytes (about the size of `message.txt`) → **Run pre-flight check**.
-**Expected:** **Low** risk (≈34 %); suggested maximum ≈49 KB.
-**Say:** "This isn't a rule of thumb. The server hid 9 KB of random data in a copy of this photo, the way the real message will be hidden, and asked our trained detector to score it. Over 100 test photos, nothing rated Low was ever detected, and 99 % of High-rated messages were."
+**Do:** **Pre-flight** → drop `cover.png` → protection *Recipient's public key* → size **9000** bytes → **Run pre-flight check**.
+**Expected:** **Medium** risk (≈45 %), suggested maximum ≈4,850 bytes.
+**Do:** change the size to **4000** → **Run pre-flight check** again.
+**Expected:** **Low** risk (≈28 %).
+**Say:** "This isn't a rule of thumb. The server hid that much random data in a copy of this photo, the way the real message will be hidden, and asked our trained detector to score it. 9 KB was borderline, so it told us to stay under about 4.8 KB. Across 417 held-out test images, nothing rated Low was ever detected."
 
 ### 4. Hide (3:15 → 4:45)
-**Do:** **Hide a message in this image** (or the **Hide** page with `cover.png`) → *Recipient's public key* → paste the public key → paste `message.txt` → leave **LSB matching (±1)** and **Scattered by key** → **Hide message** → **Download**.
+**Do:** **Hide a message in this image** (or the **Hide** page with `cover.png`) → *Recipient's public key* → paste the public key → paste `message.txt` (~3.8 KB) → leave **LSB matching (±1)** and **Scattered by key** → **Hide message** → **Download**.
 **Expected:** "Your message is hidden", and a PNG download.
 **Say:** "The image looks identical: PSNR above 54 dB even at 50 % payload. The pixels hold no header and no signature. Without the key, the bits are indistinguishable from noise."
 
@@ -71,10 +74,10 @@ Show the **Overview** page briefly.
 
 ### 6. Detect (5:45 → 7:15)
 **Do:** **Detect** → drop `stego-matching.png`.
-**Expected:** ≈30–35 %, *Probably no hidden data* (varies slightly per run: the keys are random).
-**Do:** drop `stego-replacement.png`: the same message hidden with LSB replacement.
-**Expected:** 100 %, *Hidden data likely*. The top features are `spa_rate_*`.
-**Say:** "Same message, same photo, different embedding algorithm. Replacement is caught every time. Sample Pairs Analysis sees the pairs of pixel values it creates. Matching nudges values up or down instead, and our detector can't tell it from a clean photo. That's why matching is the default."
+**Expected:** ≈30–45 %, *Probably no hidden data*, below the 72 % decision threshold (varies slightly per run: the keys are random).
+**Do:** drop `stego-replacement.png`: the same ~8.6 KB message hidden with LSB replacement.
+**Expected:** 98–100 %, *Hidden data likely*. The top features are `spa_rate_*`.
+**Say:** "Same message, same photo, different embedding algorithm. Replacement is caught every time: Sample Pairs Analysis sees the pairs of pixel values it creates. Matching nudges values up or down instead, so at this size it slips under the threshold. It isn't invisible, though: our detector also compares the noise between colour channels, and catches most large matching payloads. That's why matching is the default *and* why the pre-flight check keeps messages small."
 
 ### 7. Evaluation Lab (7:15 → 9:15)
 > Depends on the Evaluation Lab page (Phase 6). If it's not ready, show `docs/results.md` and its figures instead.
@@ -82,13 +85,13 @@ Show the **Overview** page briefly.
 **Do:** **Evaluation Lab** → saved results → upload `cover.png` → run the four demos:
 - **Attacks:** the control is *Recovered*. Wrong password, wrong private key, bit flips, crop and signature scan all *Failed safely*.
 - **Robustness:** PNG re-save *Recovered*. JPEG q90/q75 and resize *Failed safely*.
-- **Detector comparison** (~5 s): replacement flagged from ~10 %, matching stays near the clean score.
+- **Detector comparison** (~5 s): clean ≈23 %; replacement flagged from 10 % (≈98 %); matching passes at 5–10 % (≈28–45 %) and is flagged from 25 % (≈96 %).
 - **Quality:** PSNR 64 → 54 dB from 5 % to 50 %.
 
 **Say:** "These are the same experiment scripts that produced the report's numbers, running live on this photo."
 
 ### 8. Close (9:15 → 10:00)
-**Say:** "Three findings. The pre-flight check is a reliable guide. The embedding algorithm matters far more than the photo. And every attack we tried fails safely. Limits: LSB doesn't survive JPEG, and a stronger CNN detector might catch matching. Both are in our future work."
+**Say:** "Three findings. The pre-flight check is a reliable guide. The embedding algorithm and the message size matter far more than the photo. And every attack we tried fails safely. Limits: LSB doesn't survive JPEG, and large payloads are detectable, even with matching. Content-adaptive embedding and JPEG-domain hiding are our future work."
 
 ---
 
@@ -110,4 +113,5 @@ Show the **Overview** page briefly.
 - **"Can you brute-force the password offline?"** Every guess costs a full PBKDF2 run (600,000 iterations, ≈230 ms). Nothing embedded allows a cheaper check.
 - **"Does it survive WhatsApp?"** No. Recompression destroys LSBs, and the app warns about this. It fails safely: no partial or wrong message.
 - **"Why a Random Forest, not a CNN?"** Scope. It's interpretable (top features per image) and fast (< 1 s per image). A CNN is future work.
-- **"Was the detector tested on its own training data?"** No. The split is by source photo, and every experiment re-checks that its covers are held out.
+- **"Was the detector tested on its own training data?"** No. The split is by source photo (720 train, 180 test), and every experiment re-checks that its covers are held out.
+- **"How accurate is the detector?"** ROC-AUC 0.87 on 417 held-out images. It flags about 4 % of clean photos, and 99.5 % of what it flags really carries a message. Adding inter-channel features and 9× more photos took it from 0.73 to 0.87 and made LSB matching detectable at larger sizes.

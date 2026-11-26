@@ -148,6 +148,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 **Exit criteria:**
 - [x] The CSV has 500 cover rows + 500 × 16 stego rows (8,500 total), with no NaN or inf.
+  *Later extended (Phase 3 improvement round): 2,100 covers from 900 photos, 35,700 rows × 258 features.*
 - [x] Every row has a `cover_id` and `source_id`, so the split in Phase 3 can be done by source photo.
 - [x] Running the script twice with the same seed gives byte-identical CSVs. *(Verified on the first 50 covers: SHA-256 of header + 850 rows matches the full run. A slow unit test also checks that parallel and single-worker output match.)*
 - [x] Unit test: feature vector length == `len(FEATURE_NAMES)` for RGB input.
@@ -182,6 +183,12 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 *Results (seed 2026, 20 held-out source photos):* 50 % sequential replacement ROC-AUC 0.998; LSB replacement overall 0.93; LSB matching ≈ 0.53 at every ratio. Matching is close to undetectable with these hand-crafted features, which is a known result and the reason matching is the safer option. Overall ROC-AUC is 0.73 because half the stego rows use matching.
 
 *Added during this phase:* a per-channel Sample Pairs Analysis feature (`spa_rate_r/g/b`). The first model reached only 0.75 on the sanity slice: whole-image statistics vary about 25× more between photos than embedding changes them. SPA estimates the embedding rate *relative to the image itself*, and is now the top feature.
+
+*Improvement round (26 Nov 2026), after Phases 4–6:*
+- **Inter-channel features (174, image-level):** channel-difference planes R−G, G−B, B−R (step shares and 5×5 co-occurrences) and cross-channel correlation of first differences. ±1 embedding is independent per channel and breaks the cross-channel noise correlation of camera photos, which is what exposes LSB matching. 258 features in total.
+- **9× more source photos:** DIV2K train (800 photos, 2 crops) added to valid (100 photos, 5 crops): 2,100 covers, 35,700 rows; split 720/180 photos.
+- **Training choices on training folds only:** `max_features` (0.2 chosen), calibration (isotonic), and a decision threshold capping out-of-fold false alarms at 5 % (0.717).
+- **Held-out result (180 photos):** ROC-AUC 0.731 → **0.868**; matching at 50 % 0.566 → **0.963**; stego caught 40 % → **55 %**; false alarms **4.1 %** (15 % at threshold 0.5 before tuning). Prototype checks used 300 validation-set covers, some of which ended up in the new test split; only the feature family was chosen that way, not any tuned parameter.
 
 **Not in this phase:** CNNs, hyper-parameter sweeps beyond a small grid.
 
@@ -239,7 +246,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Figures have axis labels, units, and legends, and stay readable in greyscale print.
 - [x] No test-set cover was used in training (re-checked from the split file).
 
-*Results* (full write-up in [results.md](results.md)): PSNR ≥ 54 dB and SSIM ≥ 0.998 even at 50 %. The detector catches replacement (AUC 0.87 at 5 %, 0.998 at 50 %), but matching stays near chance (≤ 0.57). Predicted Low → 0 % actually detected (n = 125), predicted High → 99 % (n = 291), the same for smooth and textured covers. PNG re-save recovers 40/40; JPEG q90/q75 and 50 % resize fail safely 120/120. All 32 security tests pass.
+*Results* (full write-up in [results.md](results.md); rerun on 26 Nov 2026 with the improved detector, 417 held-out covers): PSNR ≥ 54 dB and SSIM ≥ 0.998 even at 50 %. The detector catches replacement (AUC 0.89 at 5 %, 0.995 at 50 %) and, with the inter-channel features, larger matching payloads too (0.65 at 5 % → 0.96 at 50 %), with 4.1 % false alarms. Predicted Low → 0 % actually detected (n = 540), predicted High → 88 % (n = 2,252), the same for smooth and textured covers. PNG re-save recovers 40/40; JPEG q90/q75 and 50 % resize fail safely 120/120. All 32 security tests pass.
 
 *Reproducibility:* `quality` and `detector_eval` are byte-identical across runs (checked, including a rebuilt `split.csv`). `preflight_eval` and `robustness` hide real v2 messages, whose keys come from `os.urandom` as in production, so their individual detector scores vary slightly. Their message content and predictions are seeded.
 

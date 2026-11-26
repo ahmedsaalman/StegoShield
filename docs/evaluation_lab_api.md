@@ -54,10 +54,10 @@ Rates and probabilities are 0–1: format probabilities with `formatProbability`
 
 ## What each demo should convey (copy hints)
 
-- **Saved results** (no upload needed, show first): held-out numbers from `docs/results.md`. Pre-flight: predicted Low → 0 % actually detected, High → 99 %. Detector: replacement AUC 0.87–1.00, matching ≈ 0.5 (chance). Robustness: PNG recovers; JPEG/resize fail safely.
+- **Saved results** (no upload needed, show first): held-out numbers from `docs/results.md`. Pre-flight: predicted Low → 0 % actually detected, High → 88 %. Detector: AUC 0.87 overall with 4 % false alarms; replacement AUC 0.89–1.00, matching 0.65 (5 %) to 0.96 (50 %). Robustness: PNG recovers; JPEG/resize fail safely.
 - **Quality:** PSNR stays above ~54 dB even at 50 %, invisible to the eye. Both algorithms look identical.
 - **Robustness:** "Recovered" only for PNG re-save. JPEG/resize show **"Failed safely"**, the intended behaviour (nothing leaks), not an error.
 - **Attacks:** control = "Recovered"; every attack = "Failed safely". `unsafe` should never appear; if it does, show it as a danger state.
-- **Detector comparison:** clean score vs replacement (flagged from ~10 %) vs matching (stays near clean). This is the case for LSB matching being the default.
+- **Detector comparison:** clean score vs replacement (flagged from ~10 %) vs matching (passes at small payloads, flagged from ~25 %). This is the case for LSB matching being the default and for keeping messages small.
 
 Outcomes and detection must not rely on colour alone (skill §6.5): use `StatusBadge` with icon + words.

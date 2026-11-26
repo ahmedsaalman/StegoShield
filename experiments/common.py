@@ -80,9 +80,14 @@ def check_split_is_disjoint(split: pd.DataFrame) -> None:
             raise LeakageError(f"{len(overlapping)} {column} values are on both sides, e.g. {overlapping[:3]}")
 
 
+def load_split(split_file: Path = SPLIT_FILE) -> pd.DataFrame:
+    """The saved train/test split, rebuilt from the detector's seed if the file is missing."""
+    return pd.read_csv(split_file, dtype=str) if split_file.exists() else write_split_file(out_path=split_file)
+
+
 def held_out_cover_ids(split_file: Path = SPLIT_FILE, limit: int | None = None) -> list[str]:
     """Test-side cover ids in a fixed order; builds the split file first if it is missing."""
-    split = pd.read_csv(split_file, dtype=str) if split_file.exists() else write_split_file(out_path=split_file)
+    split = load_split(split_file)
     cover_ids = sorted(split.loc[split["side"] == "test", "cover_id"].astype(str))
     return cover_ids[:limit] if limit else cover_ids
 
@@ -93,7 +98,7 @@ def assert_held_out(cover_ids: Iterable[str], split_file: Path = SPLIT_FILE) -> 
     Raises:
         LeakageError: If a cover was used in training or is not in the split at all.
     """
-    split = pd.read_csv(split_file, dtype=str)
+    split = load_split(split_file)
     test_ids = set(split.loc[split["side"] == "test", "cover_id"])
     not_held_out = sorted(set(cover_ids) - test_ids)
     if not_held_out:

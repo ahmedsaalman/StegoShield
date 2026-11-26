@@ -11,6 +11,7 @@ from api.analysis import AnalysisService
 from api.errors import ApiError
 from api.lab import LAB_MAX_PIXELS, lab_results
 from api.main import create_app
+from experiments.common import held_out_cover_ids
 from tests.test_api import TEST_SETTINGS, png_bytes
 
 
@@ -33,7 +34,7 @@ def client_without_detector() -> Iterator[TestClient]:
 def test_saved_results_summarise_every_experiment(client):
     results = client.get("/api/lab/results").json()
 
-    assert results["held_out_covers"] == 100
+    assert results["held_out_covers"] == len(held_out_cover_ids())
     assert len(results["detector"]) == 16
     assert {row["predicted_level"] for row in results["preflight_validity"]} == {"low", "medium", "high"}
     assert [row["transport"] for row in results["robustness"]] == ["png_resave", "jpeg_q90", "jpeg_q75", "resize_50"]
