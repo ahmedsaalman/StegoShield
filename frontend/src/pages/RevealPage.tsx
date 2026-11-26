@@ -8,9 +8,11 @@ import { Disclosure } from "../components/Disclosure";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
 import { FileDrop } from "../components/FileDrop";
+import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
+import { ScrambleText } from "../components/ScrambleText";
 import { api, type EmbeddingLayout, type KeyMethod, type RevealResult, type UnlockSecret } from "../lib/api";
 import { saveFile } from "../lib/download";
 import { formatBytes } from "../lib/format";
@@ -81,6 +83,7 @@ export function RevealPage() {
     <>
       <PageHeader
         eyebrow="Receive"
+        art={<ToolArt name="reveal" isAmbient />}
         title="Reveal a message"
         description="Open an image you received and recover the hidden message with the password or your private key."
       />
@@ -93,7 +96,12 @@ export function RevealPage() {
               footer={<span>Use the original PNG. Screenshots and re-sent photos no longer carry the message.</span>}
             >
               {image ? (
-                <ImagePreview file={image} alt="The file you received" onRemove={() => setImage(null)} />
+                <ImagePreview
+                  file={image}
+                  alt="The file you received"
+                  onRemove={() => setImage(null)}
+                  activity={reveal.state.status === "loading" ? "scanning" : null}
+                />
               ) : (
                 <FileDrop
                   label="Drop the image here or click to browse"
@@ -269,7 +277,7 @@ function RevealedMessage({ result, onClear }: { result: RevealResult; onClear: (
       }
     >
       <pre className="message-box" role="region" tabIndex={0} aria-label="Decrypted message">
-        {result.message}
+        <ScrambleText text={result.message} />
       </pre>
     </Card>
   );

@@ -11,6 +11,7 @@ import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
 import { FileDrop } from "../components/FileDrop";
 import { Icon } from "../components/Icon";
+import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
 import { PageBody, PageHeader } from "../components/PageHeader";
@@ -122,12 +123,17 @@ export function HidePage() {
     <>
       <PageHeader
         eyebrow="Send"
+        art={<ToolArt name="hide" isAmbient />}
         title="Hide a message"
         description="Encrypt a message and hide it in an image. The result looks identical to the original; only the password or the matching private key can read it."
       />
       <PageBody isNarrow>
         <form className="stack-lg" onSubmit={handleSubmit} noValidate>
-          <CoverStep cover={cover} error={visibleErrors.cover} />
+          <CoverStep
+            cover={cover}
+            error={visibleErrors.cover}
+            isEmbedding={hideRequest.state.status === "loading"}
+          />
           <MessageStep
             message={message}
             onMessageChange={setMessage}
@@ -220,7 +226,13 @@ export function HidePage() {
   );
 }
 
-function CoverStep({ cover, error }: { cover: CoverImage; error: string | undefined }) {
+interface CoverStepProps {
+  cover: CoverImage;
+  error: string | undefined;
+  isEmbedding: boolean;
+}
+
+function CoverStep({ cover, error, isEmbedding }: CoverStepProps) {
   return (
     <Card
       step="Step 01"
@@ -229,7 +241,12 @@ function CoverStep({ cover, error }: { cover: CoverImage; error: string | undefi
       footer={<CapacityFooter state={cover.capacity} />}
     >
       {cover.file ? (
-        <ImagePreview file={cover.file} alt="Your chosen cover" onRemove={cover.clear} />
+        <ImagePreview
+          file={cover.file}
+          alt="Your chosen cover"
+          onRemove={cover.clear}
+          activity={isEmbedding ? "embedding" : null}
+        />
       ) : (
         <div id={FIELD_IDS.cover} tabIndex={-1}>
           <FileDrop
@@ -460,6 +477,7 @@ function HideResult({ cover, result, usedPassword, onStartOver }: HideResultProp
     <>
       <PageHeader
         eyebrow="Send"
+        art={<ToolArt name="hide" isAmbient />}
         title="Your message is hidden"
         description="Download the new image and send it to the recipient. Only the password or their private key can reveal the message."
       />
@@ -495,7 +513,7 @@ function HideResult({ cover, result, usedPassword, onStartOver }: HideResultProp
                 <figcaption>Original</figcaption>
               </figure>
               <figure>
-                <div className="image-frame">
+                <div className="image-frame image-frame--sweep">
                   <BlobImage blob={result.blob} alt="Cover with the message hidden in it" />
                 </div>
                 <figcaption>With hidden message</figcaption>

@@ -1,7 +1,7 @@
-// Small line drawings for the Overview tool cards. They animate on hover/focus of
-// the surrounding card (see .feature:hover rules in styles.css). Decorative only.
+// Small line drawings for the tool pages. On Overview cards they animate on hover/focus of
+// the card; in page title bands (`isAmbient`) they loop gently. Decorative only.
 
-export type ToolArtName = "hide" | "reveal" | "preflight" | "detect";
+export type ToolArtName = "hide" | "reveal" | "preflight" | "detect" | "keys";
 
 const DETECT_DOTS = Array.from({ length: 6 * 4 }, (_, index) => ({
   x: 58 + (index % 6) * 17,
@@ -17,9 +17,15 @@ function Frame() {
   );
 }
 
-export function ToolArt({ name }: { name: ToolArtName }) {
+interface ToolArtProps {
+  name: ToolArtName;
+  isAmbient?: boolean;
+}
+
+export function ToolArt({ name, isAmbient = false }: ToolArtProps) {
+  const className = `tool-art tool-art--${name}${isAmbient ? " tool-art--ambient" : ""}`;
   return (
-    <svg className={`tool-art tool-art--${name}`} viewBox="0 0 200 120" aria-hidden="true" focusable="false">
+    <svg className={className} viewBox="0 0 200 120" aria-hidden="true" focusable="false">
       {name === "hide" && (
         <>
           <Frame />
@@ -62,6 +68,19 @@ export function ToolArt({ name }: { name: ToolArtName }) {
           <g className="art-lens">
             <circle cx="78" cy="56" r="16" />
             <path d="M90 68 L102 80" />
+          </g>
+        </>
+      )}
+      {name === "keys" && (
+        <>
+          <g className="art-key art-key--private">
+            <circle cx="62" cy="46" r="15" />
+            <circle cx="62" cy="46" r="5" className="art-faint" />
+            <path d="M77 46 H146 M128 46 V57 M139 46 V54" />
+          </g>
+          <g className="art-key art-key--public">
+            <circle cx="138" cy="80" r="11" />
+            <path d="M127 80 H70 M84 80 V89 M76 80 V86" />
           </g>
         </>
       )}

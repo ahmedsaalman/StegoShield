@@ -7,10 +7,12 @@ interface PageHeaderProps {
   description: ReactNode;
   /** Short mono label above the title, e.g. "Send". */
   eyebrow?: string;
+  /** Decorative illustration shown beside the title on wide screens. */
+  art?: ReactNode;
 }
 
 /** Full-width title band at the top of a page. */
-export function PageHeader({ title, description, eyebrow }: PageHeaderProps) {
+export function PageHeader({ title, description, eyebrow, art }: PageHeaderProps) {
   useEffect(() => {
     document.title = `${title} · ${APP_NAME}`;
   }, [title]);
@@ -18,12 +20,19 @@ export function PageHeader({ title, description, eyebrow }: PageHeaderProps) {
   return (
     <header className="page-header">
       <div className="container page-header__inner">
-        {eyebrow && <p className="page-header__eyebrow">{eyebrow}</p>}
-        {/* tabIndex lets the layout move focus here after navigation, for screen-reader users. */}
-        <h1 className="page-header__title" tabIndex={-1}>
-          {title}
-        </h1>
-        <p className="page-header__description">{description}</p>
+        <div className="page-header__text">
+          {eyebrow && <p className="page-header__eyebrow">{eyebrow}</p>}
+          {/* tabIndex lets the layout move focus here after navigation, for screen-reader users. */}
+          <h1 className="page-header__title" tabIndex={-1}>
+            {title}
+          </h1>
+          <p className="page-header__description">{description}</p>
+        </div>
+        {art && (
+          <div className="page-header__art" aria-hidden="true">
+            {art}
+          </div>
+        )}
       </div>
     </header>
   );

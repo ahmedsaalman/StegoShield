@@ -8,6 +8,7 @@ import { ChoiceGroup } from "../components/ChoiceGroup";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
 import { FileDrop } from "../components/FileDrop";
+import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
 import { PageBody, PageHeader } from "../components/PageHeader";
@@ -55,6 +56,7 @@ export function PreflightPage() {
     <>
       <PageHeader
         eyebrow="Send"
+        art={<ToolArt name="preflight" isAmbient />}
         title="Pre-flight check"
         description="Before hiding anything, see how much an image can hold and how likely a steganalysis detector is to notice a message of your size."
       />
@@ -76,7 +78,12 @@ export function PreflightPage() {
               }
             >
               {cover.file ? (
-                <ImagePreview file={cover.file} alt="Candidate cover" onRemove={clearCover} />
+                <ImagePreview
+                  file={cover.file}
+                  alt="Candidate cover"
+                  onRemove={clearCover}
+                  activity={check.state.status === "loading" ? "scanning" : null}
+                />
               ) : (
                 <FileDrop
                   label="Drop an image here or click to browse"

@@ -5,6 +5,7 @@ import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { FileDrop } from "../components/FileDrop";
+import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
 import { PageBody, PageHeader } from "../components/PageHeader";
@@ -37,6 +38,7 @@ export function DetectPage() {
     <>
       <PageHeader
         eyebrow="Analyse"
+        art={<ToolArt name="detect" isAmbient />}
         title="Detect hidden data"
         description="Scan an image with a machine-learning steganalysis detector: the probability that it carries a hidden message, and the statistics behind the score."
       />
@@ -72,6 +74,7 @@ export function DetectPage() {
                 <ImagePreview
                   file={image.file}
                   alt="The file to scan"
+                  activity={scan.state.status === "loading" ? "scanning" : null}
                   onRemove={() => {
                     image.clear();
                     scan.reset();

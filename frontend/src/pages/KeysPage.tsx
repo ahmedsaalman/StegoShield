@@ -7,8 +7,10 @@ import { Card } from "../components/Card";
 import { CopyButton } from "../components/CopyButton";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { Field } from "../components/Field";
+import { ToolArt } from "../components/illustrations/ToolArt";
 import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
+import { ScrambleText } from "../components/ScrambleText";
 import { api, type KeyPair, type PublicKeyInfo } from "../lib/api";
 import { saveFile } from "../lib/download";
 import { useRequest } from "../lib/useRequest";
@@ -21,6 +23,7 @@ export function KeysPage() {
     <>
       <PageHeader
         eyebrow="Set up"
+        art={<ToolArt name="keys" isAmbient />}
         title="Keys"
         description="Public-key protection lets people send you messages without sharing a password. Create your key pair once, then give your public key to anyone who should be able to write to you."
       />
@@ -147,7 +150,7 @@ function GeneratedKeys({ keys, onClear }: { keys: KeyPair; onClear: () => void }
         }
       >
         <pre className="code-block" role="region" tabIndex={0} aria-label="Your public key">
-          {keys.public_key_base64}
+          <ScrambleText text={keys.public_key_base64} durationMs={700} />
         </pre>
         <p className="text-muted">Senders can compare the fingerprint to be sure they have your real key.</p>
       </Card>

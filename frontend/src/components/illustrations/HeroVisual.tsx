@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import { RISK_PRESENTATION } from "../../lib/presentation";
+import { scatteredCells } from "../../lib/scatter";
 import { Icon } from "../Icon";
 import { StatusBadge } from "../StatusBadge";
 
@@ -12,31 +13,7 @@ const GRID_ROWS = 11;
 const BIT_COUNT = 30;
 const BIT_DELAY_STEP_MS = 140;
 
-interface Cell {
-  column: number;
-  row: number;
-}
-
-/** Deterministic pseudo-random cells, so the picture is identical on every render. */
-function scatteredCells(count: number, seed: number): Cell[] {
-  let state = seed;
-  const next = () => {
-    state = (state * 1103515245 + 12345) % 2147483648;
-    return state / 2147483648;
-  };
-  const taken = new Set<string>();
-  const cells: Cell[] = [];
-  while (cells.length < count) {
-    const cell = { column: Math.floor(next() * GRID_COLUMNS), row: Math.floor(next() * GRID_ROWS) };
-    const key = `${cell.column}:${cell.row}`;
-    if (taken.has(key)) continue;
-    taken.add(key);
-    cells.push(cell);
-  }
-  return cells;
-}
-
-const BIT_CELLS = scatteredCells(BIT_COUNT, 2026);
+const BIT_CELLS = scatteredCells(BIT_COUNT, GRID_COLUMNS, GRID_ROWS, 2026);
 
 export function HeroVisual() {
   return (
