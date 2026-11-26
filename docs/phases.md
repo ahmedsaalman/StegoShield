@@ -271,6 +271,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Detect page shows the trained detector's probability and top contributing features; API returns 503 with a reason when the model is missing or mismatched.
 - [x] Warn on JPEG covers; reject JPEG/WebP on reveal with an explanation; enforce size limits client- and server-side.
 - [x] Packaging: `Dockerfile` (single image), `Makefile` (`dev-api`, `dev-web`, `serve`, `check`).
+- [x] **Hosted demo (scope change, 27 Nov 2026):** the examiner asked for a link, so `deploy/hf_space.py` (`make deploy-hf`) publishes HEAD to a Hugging Face Docker Space, and `.github/workflows/deploy-hf.yml` runs it from GitHub after the tests pass on each push to `main`. There are still no accounts and no storage.
 - [x] Pre-flight page uses the Phase 4 detector-in-the-loop result (only `api/analysis.py` changed; the response shape is unchanged). Without a detector, `/api/preflight` now returns 503 `detector_unavailable`.
 - [x] **Evaluation Lab API:** `/api/lab/{quality,robustness,attacks,detector-comparison}` run the `experiments/` functions on an uploaded image (≤ 1024×1024 px), and `/api/lab/results` serves the saved held-out results. `api/lab.py` is the only adapter; there's no duplicated logic. `experiments/attacks.py` was added as the importable attack demo.
 - [ ] **Evaluation Lab page** (front end): consumes the endpoints above. Built by the front-end session in the new design system; contract in [evaluation_lab_api.md](evaluation_lab_api.md).
@@ -283,9 +284,9 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Wrong password and tampered image show a clear message, not a stack trace.
 - [x] Risk level is never conveyed by colour alone (label + icon + percentage).
 - [x] `pytest`, `ruff`, `npm test`, `npm run lint` (incl. jsx-a11y) and `npm run typecheck` all pass.
-- [ ] `docker build` succeeds and the container passes its health check.
+- [ ] `docker build` succeeds and the container passes its health check (the first Space build covers this).
 
-**Not in this phase:** user accounts, a database, public deployment (out of scope).
+**Not in this phase:** user accounts, a database, production hosting (the Space is an assessment demo only).
 
 ---
 

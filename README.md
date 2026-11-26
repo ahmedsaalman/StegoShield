@@ -120,6 +120,20 @@ docker run -p 8000:8000 stegoshield
 ```
 If `models/detector.joblib` is missing or was trained on a different feature set, the app still runs; `/api/meta` reports why and the Detect page explains that scanning is unavailable.
 
+**Hosted demo (Hugging Face Spaces):** the examiners' link. A Docker Space builds the same `Dockerfile` on Hugging Face's free CPU tier (2 vCPU, 16 GB).
+
+*Automatic (recommended):* `.github/workflows/deploy-hf.yml` runs the tests on every push to `main` that touches the app, then publishes it from GitHub's servers. One-time setup is in GitHub → Settings → Secrets and variables → Actions: a secret `HF_TOKEN` (a Hugging Face token with write access) and a variable `HF_SPACE` (`<owner>/stegoshield`). Until `HF_SPACE` is set, the deploy step is skipped. To deploy without a push, use Actions → *Deploy to Hugging Face Space* → *Run workflow*.
+
+*Manual* (needs your network to reach huggingface.co):
+```bash
+.venv/bin/hf auth login                     # once: an access token with write permission
+make deploy-hf SPACE=<owner>/stegoshield    # or add --dry-run via: .venv/bin/python -m deploy.hf_space --space ... --dry-run
+```
+`deploy/hf_space.py` publishes only what is **committed at HEAD** and only the paths the Dockerfile copies. It uses `deploy/space_README.md` as the Space card (Docker SDK, `app_port: 8000`). It also sets the Space variables `STEGOSHIELD_ENABLE_HSTS=1`, `STEGOSHIELD_MAX_CONCURRENT_JOBS=2` and `FORWARDED_ALLOW_IPS=*`, so the rate limit applies per visitor behind the Spaces proxy. Re-run it after each commit you want live.
+- Share the **direct app URL** it prints (`https://<owner>-stegoshield.hf.space`), not the `huggingface.co/spaces/...` page. The app forbids framing (`frame-ancestors 'none'`), so the Space page's embedded view stays blank.
+- A free Space sleeps after 48 hours without visitors and needs about a minute to wake. Open the link shortly before the examiner does.
+- Visitors' passwords and private keys reach the server. It stores nothing, but the Space card tells visitors to use only test secrets.
+
 ### 6. Build the Detector Dataset
 ```bash
 python -m ml.prepare_covers   # downloads DIV2K valid + train if missing (~4 GB), cuts 2,100 covers into data/covers/
