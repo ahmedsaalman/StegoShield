@@ -1,11 +1,12 @@
 import { useEffect, useEffectEvent, useRef } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { useAppState } from "../state/AppState";
 import { Icon } from "./Icon";
+import { type Tab, TabBar } from "./TabBar";
 import { ThemeSwitcher } from "./ThemeToggle";
 
-const TABS = [
+const TABS: Tab[] = [
   { to: "/", label: "Overview", end: true },
   { to: "/preflight", label: "Pre-flight" },
   { to: "/hide", label: "Hide" },
@@ -49,13 +50,7 @@ function SiteHeader() {
           </a>
         </div>
       </div>
-      <nav className="container tabs" aria-label="Main">
-        {TABS.map((tab) => (
-          <NavLink key={tab.to} to={tab.to} end={tab.end} className="tab">
-            {tab.label}
-          </NavLink>
-        ))}
-      </nav>
+      <TabBar tabs={TABS} />
     </header>
   );
 }
