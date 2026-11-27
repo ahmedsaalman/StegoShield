@@ -17,6 +17,7 @@ testpaths = ["tests"]
 addopts = "-m 'not slow'"
 markers = [
     "slow: long-running tests, excluded by default (run with: pytest -m slow)",
+    "real_kdf: keep the production PBKDF2 iteration count (tests otherwise use 1,000 rounds; see tests/conftest.py)",
 ]
 filterwarnings = [
     # Starlette's TestClient now suggests the httpx2 package; httpx stays pinned until that is vetted.

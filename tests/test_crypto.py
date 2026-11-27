@@ -10,6 +10,7 @@
 import pytest
 from cryptography.hazmat.primitives import serialization
 
+from core import crypto
 from core.crypto import (
     MAGIC,
     MODE_ASYMMETRIC,
@@ -39,6 +40,22 @@ from core.keys import (
 # ==============================================================================
 # Password Mode
 # ==============================================================================
+
+
+@pytest.mark.real_kdf
+def test_password_key_derivation_runs_600k_pbkdf2_rounds(monkeypatch):
+    """The rest of the suite uses 1,000 rounds for speed (tests/conftest.py); production must not."""
+    rounds = []
+    real_pbkdf2 = crypto.PBKDF2HMAC
+
+    def recording_pbkdf2(*args, **kwargs):
+        rounds.append(kwargs["iterations"])
+        return real_pbkdf2(*args, **kwargs)
+
+    monkeypatch.setattr(crypto, "PBKDF2HMAC", recording_pbkdf2)
+    derive_password_session("correct horse", b"\x00" * SALT_SIZE)
+
+    assert rounds == [600_000]
 
 
 def test_password_mode_round_trip():

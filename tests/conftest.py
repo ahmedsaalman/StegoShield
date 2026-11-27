@@ -1,14 +1,27 @@
-"""Shared fixtures: a small synthetic feature table and a tiny trained detector."""
+"""Shared fixtures: fast password key derivation, a small synthetic feature table and a tiny trained detector."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from core import crypto
 from ml.dataset import DEFAULT_VARIANTS, META_COLUMNS
 from ml.features import FEATURE_NAMES
 from ml.train_detector import save_artifact, split_by_source, train_detector
 
 FAST_FOREST = {"n_estimators": 25, "min_samples_leaf": 2, "n_jobs": 1}
+FAST_PBKDF2_ITERATIONS = 1_000
+
+
+@pytest.fixture(autouse=True)
+def fast_pbkdf2(request, monkeypatch):
+    """Tests check what password key derivation does, not what it costs.
+
+    1,000 PBKDF2 rounds instead of 600,000 keeps the default run under 10 s. Every password still
+    goes through the real PBKDF2 → HKDF chain. Tests marked `real_kdf` keep the production count.
+    """
+    if request.node.get_closest_marker("real_kdf") is None:
+        monkeypatch.setattr(crypto, "PBKDF2_ITERATIONS", FAST_PBKDF2_ITERATIONS)
 
 
 @pytest.fixture(scope="session")

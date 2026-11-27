@@ -21,6 +21,7 @@ from api.sample_texts import SAMPLE_TEXTS, find_sample_text
 
 TEST_SETTINGS = Settings(static_dir=None, rate_limit_per_minute=0, max_concurrent_jobs=2, log_level="WARNING")
 CYAN = (0, 229, 255)
+PHOTO_PX = 256
 
 
 @pytest.fixture(scope="module")
@@ -31,8 +32,9 @@ def client(tiny_model_path) -> Iterator[TestClient]:
 
 @pytest.fixture(scope="module")
 def photo_png() -> bytes:
-    """A real 512 px held-out photo, uploaded as if it were the user's own image."""
-    return find_sample("03-boat").path.read_bytes()
+    """A 256 px crop of a real held-out photo, uploaded as if it were the user's own image."""
+    with Image.open(find_sample("03-boat").path) as photo:
+        return png_bytes(photo.convert("RGB").crop((128, 128, 128 + PHOTO_PX, 128 + PHOTO_PX)))
 
 
 @pytest.fixture(scope="module")
@@ -88,7 +90,7 @@ def test_list_texts_includes_the_full_text(client):
 
 def test_run_reports_both_algorithms_for_the_users_image(email_run):
     assert email_run["fits"] is True
-    assert (email_run["image_width"], email_run["image_height"]) == (512, 512)
+    assert (email_run["image_width"], email_run["image_height"]) == (PHOTO_PX, PHOTO_PX)
     assert email_run["message_bytes"] == find_sample_text("email").size_bytes
     assert 0 < email_run["payload_percent"] < 5
     assert [result["algorithm"] for result in email_run["results"]] == ["replacement", "matching"]
@@ -114,7 +116,7 @@ def test_highlights_cover_the_users_image(email_run):
 
         hotspot = result["hotspot"]
         assert hotspot["x"] >= 0 and hotspot["y"] >= 0
-        assert hotspot["x"] + hotspot["width"] <= 512 and hotspot["y"] + hotspot["height"] <= 512
+        assert hotspot["x"] + hotspot["width"] <= PHOTO_PX and hotspot["y"] + hotspot["height"] <= PHOTO_PX
         assert decode_data_url(result["hotspot_original"]).size == (hotspot["width"], hotspot["height"])
         assert decode_data_url(result["hotspot_stego"]).size == (HOTSPOT_PX, HOTSPOT_PX)
 

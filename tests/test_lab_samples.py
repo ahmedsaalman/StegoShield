@@ -27,6 +27,14 @@ def client(tiny_model_path) -> Iterator[TestClient]:
         yield test_client
 
 
+@pytest.fixture(scope="module")
+def boat_run(client) -> dict:
+    """One 10 % run on a built-in photo, shared by the tests that only read its result."""
+    response = client.post("/api/lab/samples/03-boat/run", json={"payload_percent": 10})
+    assert response.status_code == 200
+    return response.json()
+
+
 def decode_data_url(url: str) -> Image.Image:
     header, payload = url.split(",", 1)
     assert header in ("data:image/png;base64", "data:image/jpeg;base64")
@@ -85,9 +93,8 @@ def test_unknown_sample_returns_404(client):
     assert response.json()["error"]["code"] == "unknown_sample"
 
 
-def test_run_reports_both_algorithms_with_previews(client):
-    run = client.post("/api/lab/samples/03-boat/run", json={"payload_percent": 10}).json()
-
+def test_run_reports_both_algorithms_with_previews(boat_run):
+    run = boat_run
     assert [result["algorithm"] for result in run["results"]] == ["replacement", "matching"]
     for result in run["results"]:
         assert 0 <= result["predicted_probability"] <= 1
@@ -98,10 +105,8 @@ def test_run_reports_both_algorithms_with_previews(client):
         assert decode_data_url(result["change_map"]).size == (128, 128)
 
 
-def test_run_hides_the_requested_share(client):
-    run = client.post("/api/lab/samples/03-boat/run", json={"payload_percent": 10}).json()
-
-    assert run["message_bytes"] == 512 * 512 * 3 // 10 // 8 - 64
+def test_run_hides_the_requested_share(boat_run):
+    assert boat_run["message_bytes"] == 512 * 512 * 3 // 10 // 8 - 64
 
 
 @pytest.mark.parametrize("payload_percent", [0, 0.5, 51, 100])
