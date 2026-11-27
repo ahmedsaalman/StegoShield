@@ -113,7 +113,7 @@ make dev-web      # React on http://localhost:5173, proxies /api to :8000
 ```bash
 make serve        # builds frontend/dist, then serves API + app on http://127.0.0.1:8000
 ```
-**Docker:**
+**Docker** (provided but untested: the image has never been built; use `make serve` for a tested setup):
 ```bash
 docker build -t stegoshield .
 docker run -p 8000:8000 stegoshield

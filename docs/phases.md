@@ -27,7 +27,7 @@ This is the authoritative definition of the development phases. Scope comes from
 | 3 | Detector | D | 2 | 1 day | ✅ |
 | 4 | Pre-flight check | B | 1, 3 | ½ day | ✅ |
 | 5 | Experiments | all | 1, 3, 4 | 1 day | ✅ |
-| 6 | Web app + Evaluation Lab | UI, API | 4, 5 | 2 days | 🟡 |
+| 6 | Web app + Evaluation Lab | UI, API | 4, 5 | 2 days | ✅ (Docker image untested) |
 | 7 | Report & demo | none | 6 | 1 day | 🟡 |
 
 Total: about 6½–7 working days.
@@ -256,7 +256,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 
 ---
 
-## Phase 6: Web app (React + FastAPI) + Evaluation Lab 🟡
+## Phase 6: Web app (React + FastAPI) + Evaluation Lab ✅
 
 **Goal:** A full-stack web app (React + TypeScript front end, stateless FastAPI back end) that runs the whole pipeline on the trained model and demos the evaluation live.
 
@@ -286,7 +286,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Wrong password and tampered image show a clear message, not a stack trace.
 - [x] Risk level is never conveyed by colour alone (label + icon + percentage).
 - [x] `pytest`, `ruff`, `npm test`, `npm run lint` (incl. jsx-a11y) and `npm run typecheck` all pass.
-- [ ] `docker build` succeeds and the container passes its health check.
+- [ ] ~~`docker build` succeeds and the container passes its health check.~~ **Skipped, untested (27 Nov 2026):** Docker wasn't available, and nothing depends on it: the demo runs with `make serve`, and CI checks lint, tests and the build. The `Dockerfile` is provided as is and has never been built; the README says so.
 
 **Not in this phase:** user accounts, a database, public deployment (out of scope).
 
