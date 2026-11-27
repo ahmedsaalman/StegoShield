@@ -112,6 +112,8 @@ Show the **Overview** page briefly.
 | "Detector not available" | `models/detector.joblib` is missing or mismatched. Don't debug live; switch to the fallback video. |
 | Upload rejected as too large | Use `cover.png` (512×512). Lab demos accept up to 1024×1024. |
 | Reveal says "no message found" | Check the mode (*My private key* vs *Password*) and that the *downloaded* PNG was used, not `cover.png`. |
+| Private key file missing, or key generation fails | Switch to the built-in example keys (~40 s, longer than the rest of this table). **Hide** → *Recipient's public key* → **Use the example key (testing only)** → hide and download again. Then **Reveal** → *My private key* → **Use the example private key**. **Say:** "This is the built-in test key pair; everyone has it, which is why the app warns that anyone could read this message." The example key only opens messages hidden with it, so you must hide again; swapping keys on Reveal alone won't work. |
+| Short on time at the Keys step | Skip generating a key: on **Hide**, use **Use the example key** and carry on. Reveal then uses **Use the example private key**, so no files need handling. |
 | Detector comparison is slow | It takes ~5 s; keep talking. The pre-flight and detector results above make the same point. |
 | A live run (8 photos or 6 messages) is slow | Press **Stop** once half the cards are done. The finished cards and the summary already make the point. |
 | Laptop fails entirely | Play `fallback.mov` from a USB stick or a phone, and narrate over it. |
