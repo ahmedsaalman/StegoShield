@@ -6,6 +6,8 @@ Ahmed Salman 23L-0678 (7J) · Alishba Jamal Uddin Ahmed 23L-1002 (7J) · Kashmal
 National University of Computer and Emerging Sciences, Lahore
 Revised: November 26, 2026 (original: October 27, 2026)
 
+> **Implementation note (added November 27, 2026):** the Streamlit dashboard described below was replaced by a React + TypeScript web app on a stateless FastAPI back end. It offers the same tools (Keys, Pre-flight, Hide, Reveal, Detect and the Evaluation Lab), alongside the command-line tool. The proposal text is kept as submitted; [final_report.md](final_report.md) §2 explains the change.
+
 ---
 
 ## 1. Executive Summary
