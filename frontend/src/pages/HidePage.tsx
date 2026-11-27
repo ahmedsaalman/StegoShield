@@ -70,7 +70,16 @@ export function HidePage() {
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
 
   const keyCheck = useRequest<PublicKeyInfo>();
+  const runKeyCheck = keyCheck.run;
   const hideRequest = useRequest<HiddenImage>();
+  const isExampleKey = keyCheck.state.status === "success" && keyCheck.state.data.is_example_key;
+
+  // A key handed over from the Keys page is checked straight away, so its fingerprint (and an example-key
+  // warning) show without the user touching the field.
+  const savedKeyBase64 = savedKey?.publicKeyBase64;
+  useEffect(() => {
+    if (savedKeyBase64) void runKeyCheck((signal) => api.inspectPublicKey(savedKeyBase64, signal));
+  }, [savedKeyBase64, runKeyCheck]);
   const messageBytes = new TextEncoder().encode(message).length;
   const capacity = cover.capacity.status === "success" ? cover.capacity.data : null;
   const capacityBytes = capacity ? capacity.max_message_bytes[method] : null;
@@ -101,6 +110,14 @@ export function HidePage() {
     void hideRequest.run((signal) => api.hide({ cover: coverFile, message, protection, algorithm, layout }, signal));
   }
 
+  function fillExampleKey() {
+    void keyCheck.run(async (signal) => {
+      const example = await api.exampleKeyPair(signal);
+      setRecipientKey(example.public_key_base64);
+      return { public_key_base64: example.public_key_base64, fingerprint: example.fingerprint, is_example_key: true };
+    });
+  }
+
   function startOver() {
     hideRequest.reset();
     cover.clear();
@@ -114,6 +131,7 @@ export function HidePage() {
         cover={cover.file}
         result={hideRequest.state.data}
         usedPassword={method === "password"}
+        usedExampleKey={method === "public_key" && isExampleKey}
         onStartOver={startOver}
       />
     );
@@ -168,6 +186,7 @@ export function HidePage() {
                   keyCheck.reset();
                 }}
                 onCheck={() => void keyCheck.run((signal) => api.inspectPublicKey(recipientKey, signal))}
+                onUseExample={fillExampleKey}
                 check={keyCheck.state}
                 error={visibleErrors.recipientKey}
               />
@@ -420,11 +439,12 @@ interface RecipientKeyFieldProps {
   value: string;
   onChange: (value: string) => void;
   onCheck: () => void;
+  onUseExample: () => void;
   check: RequestState<PublicKeyInfo>;
   error: string | undefined;
 }
 
-function RecipientKeyField({ value, onChange, onCheck, check, error }: RecipientKeyFieldProps) {
+function RecipientKeyField({ value, onChange, onCheck, onUseExample, check, error }: RecipientKeyFieldProps) {
   return (
     <div className="stack">
       <Field
@@ -451,8 +471,22 @@ function RecipientKeyField({ value, onChange, onCheck, check, error }: Recipient
           />
         )}
       </Field>
+      <div className="inline-action">
+        <span className="text-muted">No key to hand?</span>
+        <Button variant="ghost" size="sm" icon="key" onClick={onUseExample} disabled={check.status === "loading"}>
+          Use the example key (testing only)
+        </Button>
+      </div>
       {check.status === "loading" && <p className="text-muted">Checking key…</p>}
-      {check.status === "success" && (
+      {check.status === "success" && check.data.is_example_key && (
+        <Alert tone="warning" title="This is the example key" live>
+          <p>
+            Everyone has its private key, so anyone can read a message hidden with it. Use it only to try the app;
+            reveal the result with <em>Use the example private key</em> on the Reveal page.
+          </p>
+        </Alert>
+      )}
+      {check.status === "success" && !check.data.is_example_key && (
         <Alert tone="success" title="Valid public key" live>
           Fingerprint <code className="fingerprint">{check.data.fingerprint}</code>. Confirm it with the recipient (in
           person or by phone) so you know the key really is theirs.
@@ -466,10 +500,11 @@ interface HideResultProps {
   cover: File;
   result: HiddenImage;
   usedPassword: boolean;
+  usedExampleKey: boolean;
   onStartOver: () => void;
 }
 
-function HideResult({ cover, result, usedPassword, onStartOver }: HideResultProps) {
+function HideResult({ cover, result, usedPassword, usedExampleKey, onStartOver }: HideResultProps) {
   const tips = usedPassword
     ? [...SENDING_TIPS, "Share the password through a different channel than the image."]
     : SENDING_TIPS;
@@ -486,6 +521,14 @@ function HideResult({ cover, result, usedPassword, onStartOver }: HideResultProp
           <Alert tone="success" title="Encrypted and hidden" live>
             The two images below should look identical.
           </Alert>
+          {usedExampleKey && (
+            <Alert tone="warning" title="Hidden with the example key">
+              <p>
+                Anyone can read this message, so don&apos;t send it anywhere real. To see it work, open the{" "}
+                <Link to="/reveal">Reveal</Link> page and choose <em>Use the example private key</em>.
+              </p>
+            </Alert>
+          )}
           <Card
             title="Result"
             footer={

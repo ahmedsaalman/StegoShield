@@ -2112,6 +2112,23 @@ pre,
   font-weight: 600;
 }
 
+/* ---------- Keys: example key pair ---------- */
+
+.inline-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.example-key__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 /* ---------- Lab: your image × sample messages ---------- */
 
 .message-box--compact {

@@ -277,6 +277,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
   *Live sample run (27 Nov): 8 built-in held-out photos (`api/samples/`), a payload-size slider, and a live per-photo run showing the pre-flight prediction vs the detector's real score for both algorithms, PSNR/SSIM, and a full-resolution map of changed values; a scoreboard sums it up (e.g. 10 %: replacement flagged 6–7 of 8, matching 0 of 8, prediction within ~2 points). `api/lab_samples.py`, `frontend/src/pages/LabSampleRun.tsx`; 15 API tests + 3 front-end tests.*
   *Your image × sample messages (27 Nov): six built-in texts, from a 75 B note to a 40 KB dossier, each hidden in the user's own image with both algorithms and put through every test. Each run shows the detector score vs the pre-flight prediction, quality, and five safety checks (right key, wrong key, bit flips, JPEG q90, 50 % resize). An exposure map highlights the changed pixels (cyan) over the flattest third of the image (red), boxes the most exposed flat spot with a before/after zoom, and explains the result in words with the detector's strongest signals. `api/sample_texts.py`, `api/lab_messages.py`, `frontend/src/pages/LabMessageRun.tsx`, shared `useLiveRuns` hook; 15 API tests + 5 page tests + 4 hook tests.*
 - [x] Delete `app.py` and the `streamlit` dependency.
+  *Example key pair (27 Nov, after v1.0): `GET /api/keys/example` serves one fixed X25519 pair, derived from a public label in `core/keys.py`, so people can try public-key mode without making or saving keys. The Keys page shows both halves with a warning; Hide has "Use the example key" and Reveal has "Use the example private key". The example key is flagged by `/api/keys/inspect` and warned about on Hide and on the result, because anyone can read messages sent to it.*
 
 **Deliverables:** `api/`, `frontend/`, `tests/test_api.py`, `frontend/src/**/*.test.ts(x)`, `Dockerfile`, `Makefile`
 
@@ -301,7 +302,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Final report built from `revised_proposal.md` + `results.md` (problem, design, results, limitations, future work). *`docs/final_report.md`.*
 - [x] Demo script: key generation → pre-flight check → hide → extract → detect → Evaluation Lab, with a fallback recording in case of laptop/network issues. *`docs/demo_script.md`; the expected results were dry-run through the API on cover `0854_0`. The fallback recording itself is made during rehearsal.*
 - [ ] Rehearse at least twice, timed.
-- [x] Tag the release: `git tag v1.0`. *Tagged 27 Nov 2026, before the Docker check and rehearsals; if those need a fix, move the tag to the fixed commit.*
+- [x] Tag the release: `git tag v1.0`. *Tagged 27 Nov 2026, before the Docker check and rehearsals; if those need a fix, move the tag to the fixed commit. `v1.1` (same day) adds the example key pair; run the demo from `v1.1`.*
 
 **Deliverables:** `docs/final_report.pdf` (or `.md`), `docs/demo_script.md`, tag `v1.0`
 

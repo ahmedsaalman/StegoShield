@@ -108,6 +108,26 @@ def test_inspect_returns_same_fingerprint_as_generation(client, key_pair):
     assert info["fingerprint"] == key_pair["fingerprint"]
 
 
+def test_inspect_flags_only_the_example_key(client, key_pair):
+    example = client.get("/api/keys/example").json()
+
+    example_info = client.post("/api/keys/inspect", json={"public_key": example["public_key_pem"]}).json()
+    own_info = client.post("/api/keys/inspect", json={"public_key": key_pair["public_key_pem"]}).json()
+
+    assert example_info["is_example_key"] is True
+    assert example_info["fingerprint"] == example["fingerprint"]
+    assert own_info["is_example_key"] is False
+
+
+def test_example_key_pair_is_fixed_and_unencrypted(client):
+    first = client.get("/api/keys/example")
+    second = client.get("/api/keys/example").json()
+
+    assert first.headers["cache-control"] == "no-store"
+    assert first.json() == second
+    assert second["private_key_pem"].startswith("-----BEGIN PRIVATE KEY-----")
+
+
 def test_inspect_rejects_invalid_public_key(client):
     response = client.post("/api/keys/inspect", json={"public_key": "not a key"})
 
@@ -132,6 +152,21 @@ def test_public_key_round_trip_recovers_message(client, key_pair, algorithm):
     revealed = reveal(client, stego.content, method="public_key", private_key=key_pair["private_key_pem"])
 
     assert revealed.json() == {"message": "meet at noon ☀", "encoding": "utf-8", "message_bytes": 16}
+
+
+def test_example_key_pair_hides_and_reveals_a_message(client):
+    example = client.get("/api/keys/example").json()
+    stego = hide(
+        client,
+        png_bytes(),
+        message="just testing",
+        method="public_key",
+        recipient_public_key=example["public_key_base64"],
+    )
+
+    revealed = reveal(client, stego.content, method="public_key", private_key=example["private_key_pem"])
+
+    assert revealed.json()["message"] == "just testing"
 
 
 def test_password_round_trip_recovers_message(client):

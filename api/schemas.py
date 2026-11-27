@@ -80,9 +80,19 @@ class PublicKeyInspectRequest(BaseModel):
     public_key: str = Field(min_length=1, max_length=4096, description="PEM, Base64 or hex X25519 public key.")
 
 
+class ExampleKeyPairResponse(BaseModel):
+    public_key_base64: str
+    public_key_pem: str
+    private_key_pem: str = Field(description="Public on purpose: anyone can read messages sent to the example key.")
+    fingerprint: str
+
+
 class PublicKeyInfo(BaseModel):
     public_key_base64: str
     fingerprint: str
+    is_example_key: bool = Field(
+        default=False, description="The key is the built-in example key, so anyone can read messages sent to it."
+    )
 
 
 class MessageCapacity(BaseModel):

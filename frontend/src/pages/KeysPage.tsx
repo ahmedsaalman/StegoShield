@@ -11,7 +11,7 @@ import { ToolArt } from "../components/illustrations/ToolArt";
 import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
 import { ScrambleText } from "../components/ScrambleText";
-import { api, type KeyPair, type PublicKeyInfo } from "../lib/api";
+import { api, type ExampleKeyPair, type KeyPair, type PublicKeyInfo } from "../lib/api";
 import { saveFile } from "../lib/download";
 import { useRequest } from "../lib/useRequest";
 import { useAppState } from "../state/AppState";
@@ -31,6 +31,7 @@ export function KeysPage() {
         <div className="stack-lg">
           <GenerateKeyPair />
           <RecipientKey />
+          <ExampleKeys />
         </div>
       </PageBody>
     </>
@@ -277,5 +278,93 @@ function RecipientKey() {
         )}
       </Card>
     </form>
+  );
+}
+
+function ExampleKeys() {
+  const { recipientKey, setRecipientKey } = useAppState();
+  const example = useRequest<ExampleKeyPair>();
+  const keys = example.state.status === "success" ? example.state.data : null;
+  const isInUse = keys !== null && recipientKey?.fingerprint === keys.fingerprint;
+
+  return (
+    <Card
+      step="Testing only"
+      title="Just trying it out?"
+      description="Use the built-in example key pair to try public-key hiding without creating or saving keys. It is the same pair for everyone, and its private key is shown right here."
+      footer={
+        keys ? (
+          <>
+            <span>
+              Fingerprint <code className="fingerprint">{keys.fingerprint}</code>
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="check"
+              disabled={isInUse}
+              onClick={() => setRecipientKey({ publicKeyBase64: keys.public_key_base64, fingerprint: keys.fingerprint })}
+            >
+              {isInUse ? "In use for hiding" : "Use for hiding messages"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <span>Nothing to download or keep.</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="key"
+              isLoading={example.state.status === "loading"}
+              loadingLabel="Loading…"
+              onClick={() => void example.run((signal) => api.exampleKeyPair(signal))}
+            >
+              Show example keys
+            </Button>
+          </>
+        )
+      }
+    >
+      {example.state.status === "error" && <ErrorAlert error={example.state.error} />}
+      {keys && (
+        <div className="stack">
+          <Alert tone="warning" title="Anyone can read messages hidden with this key">
+            Everyone has the example private key, so use it only to see how public-key mode works. For real messages,
+            generate your own key pair above.
+          </Alert>
+          <ExampleKeyBlock half="public" text={keys.public_key_base64} pem={keys.public_key_pem} />
+          <ExampleKeyBlock half="private" text={keys.private_key_pem} pem={keys.private_key_pem} />
+          <p className="text-muted">
+            Hide a message with the public key, then open it on the <Link to="/reveal">Reveal</Link> page with{" "}
+            <em>Use the example private key</em>. No files needed.
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ExampleKeyBlock({ half, text, pem }: { half: "public" | "private"; text: string; pem: string }) {
+  const label = `Example ${half} key`;
+  return (
+    <div className="stack-sm">
+      <div className="example-key__header">
+        <h3 className="subsection-title">{label}</h3>
+        <div className="actions">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="download"
+            onClick={() => saveFile(pem, `stegoshield-example-${half}.pem`, PEM_MIME_TYPE)}
+          >
+            Download {half} key
+          </Button>
+          <CopyButton text={text} label={`Copy ${half} key`} />
+        </div>
+      </div>
+      <pre className="code-block" role="region" tabIndex={0} aria-label={label}>
+        {text}
+      </pre>
+    </div>
   );
 }

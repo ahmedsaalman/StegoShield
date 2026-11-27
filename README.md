@@ -155,7 +155,8 @@ All endpoints live under `/api`; interactive documentation is at `/api/docs`. Up
 | GET | `/api/health` | Liveness probe |
 | GET | `/api/meta` | Version, upload limits, detector status |
 | POST | `/api/keys/generate` | New X25519 key pair (optional passphrase on the private key) |
-| POST | `/api/keys/inspect` | Validate a public key and return its fingerprint |
+| GET | `/api/keys/example` | The fixed example key pair for trying public-key mode. Its private key is public: testing only |
+| POST | `/api/keys/inspect` | Validate a public key and return its fingerprint; `is_example_key` flags the example key |
 | POST | `/api/capacity` | Largest message an image can hold, per protection method |
 | POST | `/api/preflight` | Capacity + detectability risk for a planned message size |
 | POST | `/api/hide` | Encrypt and hide a message; returns a PNG |

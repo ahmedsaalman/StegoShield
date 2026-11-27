@@ -6,6 +6,7 @@ Helpers for X25519 keypair generation, PEM/Base64/Hex export, and robust import.
 from __future__ import annotations
 
 import base64
+import hashlib
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
@@ -16,6 +17,23 @@ def generate_keypair() -> tuple[x25519.X25519PrivateKey, x25519.X25519PublicKey]
     private_key = x25519.X25519PrivateKey.generate()
     public_key = private_key.public_key()
     return private_key, public_key
+
+
+# The example key is derived from this public label, so anyone can recreate its private key. That is
+# the point: it lets people try public-key mode without managing keys, and must never protect real data.
+EXAMPLE_KEY_SEED_LABEL = b"stegoshield-example-key-v1: public test key, never use for real messages"
+
+
+def example_keypair() -> tuple[x25519.X25519PrivateKey, x25519.X25519PublicKey]:
+    """The fixed, publicly known example key pair, for trying public-key mode only."""
+    private_key = x25519.X25519PrivateKey.from_private_bytes(hashlib.sha256(EXAMPLE_KEY_SEED_LABEL).digest())
+    return private_key, private_key.public_key()
+
+
+def is_example_public_key(public_key: x25519.X25519PublicKey) -> bool:
+    """True when the key is the example key, whose private half everyone has."""
+    _, example_public = example_keypair()
+    return _raw_public(public_key) == _raw_public(example_public)
 
 
 def export_private_key_pem(
@@ -102,3 +120,7 @@ def import_public_key_auto(key_str: str) -> x25519.X25519PublicKey:
         return import_public_key_base64(cleaned)
     except Exception as e:
         raise ValueError("Could not parse public key. Must be valid PEM, 32-byte Base64, or 64-char Hex.") from e
+
+
+def _raw_public(public_key: x25519.X25519PublicKey) -> bytes:
+    return public_key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)

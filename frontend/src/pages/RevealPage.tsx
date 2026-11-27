@@ -13,7 +13,14 @@ import { ImagePreview } from "../components/ImagePreview";
 import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
 import { ScrambleText } from "../components/ScrambleText";
-import { api, type EmbeddingLayout, type KeyMethod, type RevealResult, type UnlockSecret } from "../lib/api";
+import {
+  api,
+  type EmbeddingLayout,
+  type ExampleKeyPair,
+  type KeyMethod,
+  type RevealResult,
+  type UnlockSecret,
+} from "../lib/api";
 import { saveFile } from "../lib/download";
 import { formatBytes } from "../lib/format";
 import { useRequest } from "../lib/useRequest";
@@ -23,6 +30,7 @@ import { LAYOUT_CHOICES } from "./options";
 const STEGO_TYPES = new Set(["image/png", "image/bmp"]);
 const LOSSY_TYPES = new Set(["image/jpeg", "image/webp"]);
 const MAX_PRIVATE_KEY_FILE_BYTES = 16 * 1024;
+const EXAMPLE_PRIVATE_KEY_NAME = "Example private key (testing only)";
 
 const UNLOCK_CHOICES = [
   { value: "password" as const, label: "Password", description: "The sender protected it with a password." },
@@ -49,6 +57,17 @@ export function RevealPage() {
     const problem = describeStegoProblem(file, meta?.limits.max_upload_bytes);
     setImageError(problem);
     setImage(problem ? null : file);
+  }
+
+  const exampleKey = useRequest<ExampleKeyPair>();
+
+  function fillExamplePrivateKey() {
+    setPrivateKeyError(null);
+    void exampleKey.run(async (signal) => {
+      const example = await api.exampleKeyPair(signal);
+      setPrivateKey({ name: EXAMPLE_PRIVATE_KEY_NAME, pem: example.private_key_pem });
+      return example;
+    });
   }
 
   async function choosePrivateKey(file: File) {
@@ -140,11 +159,16 @@ export function RevealPage() {
                 <PrivateKeyFields
                   privateKey={privateKey}
                   onChoose={(file) => void choosePrivateKey(file)}
+                  onUseExample={fillExamplePrivateKey}
+                  isLoadingExample={exampleKey.state.status === "loading"}
                   onRemove={() => setPrivateKey(null)}
                   error={privateKeyError ?? fieldErrors.privateKey ?? null}
                   passphrase={passphrase}
                   onPassphraseChange={setPassphrase}
                 />
+              )}
+              {method === "public_key" && exampleKey.state.status === "error" && (
+                <ErrorAlert error={exampleKey.state.error} />
               )}
             </Card>
 
@@ -185,13 +209,24 @@ export function RevealPage() {
 interface PrivateKeyFieldsProps {
   privateKey: { name: string; pem: string } | null;
   onChoose: (file: File) => void;
+  onUseExample: () => void;
+  isLoadingExample: boolean;
   onRemove: () => void;
   error: string | null;
   passphrase: string;
   onPassphraseChange: (value: string) => void;
 }
 
-function PrivateKeyFields({ privateKey, onChoose, onRemove, error, passphrase, onPassphraseChange }: PrivateKeyFieldsProps) {
+function PrivateKeyFields({
+  privateKey,
+  onChoose,
+  onUseExample,
+  isLoadingExample,
+  onRemove,
+  error,
+  passphrase,
+  onPassphraseChange,
+}: PrivateKeyFieldsProps) {
   return (
     <div className="stack">
       {privateKey ? (
@@ -212,6 +247,21 @@ function PrivateKeyFields({ privateKey, onChoose, onRemove, error, passphrase, o
           onFile={onChoose}
           error={error}
         />
+      )}
+      {!privateKey && (
+        <div className="inline-action">
+          <span className="text-muted">Hidden with the example key?</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="key"
+            onClick={onUseExample}
+            isLoading={isLoadingExample}
+            loadingLabel="Loading…"
+          >
+            Use the example private key
+          </Button>
+        </div>
       )}
       <Field
         id="reveal-passphrase"

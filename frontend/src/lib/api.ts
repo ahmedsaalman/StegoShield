@@ -33,9 +33,19 @@ export interface KeyPair {
   is_private_key_encrypted: boolean;
 }
 
+/** The built-in example key pair. Its private key is public on purpose: for trying the app only. */
+export interface ExampleKeyPair {
+  public_key_base64: string;
+  public_key_pem: string;
+  private_key_pem: string;
+  fingerprint: string;
+}
+
 export interface PublicKeyInfo {
   public_key_base64: string;
   fingerprint: string;
+  /** The built-in example key: anyone can read messages sent to it. */
+  is_example_key: boolean;
 }
 
 export interface Capacity {
@@ -318,6 +328,8 @@ export const api = {
 
   generateKeyPair: (passphrase: string, signal?: AbortSignal) =>
     postJson<KeyPair>("/keys/generate", { passphrase: passphrase || null }, signal),
+
+  exampleKeyPair: (signal?: AbortSignal) => getJson<ExampleKeyPair>("/keys/example", signal),
 
   inspectPublicKey: (publicKey: string, signal?: AbortSignal) =>
     postJson<PublicKeyInfo>("/keys/inspect", { public_key: publicKey.trim() }, signal),

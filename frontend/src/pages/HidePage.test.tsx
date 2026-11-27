@@ -13,12 +13,20 @@ const META = {
 };
 const CAPACITY = { width: 64, height: 64, channels: 3, is_lossy_source: false, max_message_bytes: { password: 1500, public_key: 1484 } };
 
+const EXAMPLE_KEYS = {
+  public_key_base64: "RXhhbXBsZVB1YmxpY0tleUV4YW1wbGVQdWJsaWNLZXk=",
+  public_key_pem: "-----BEGIN PUBLIC KEY-----\nexample\n-----END PUBLIC KEY-----\n",
+  private_key_pem: "-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----\n",
+  fingerprint: "AAAA BBBB CCCC DDDD",
+};
+
 let hideRequests: FormData[] = [];
 
 function fakeServer(url: string, init?: RequestInit): Promise<Response> {
   const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   if (url === "/api/meta") return json(META);
   if (url === "/api/capacity") return json(CAPACITY);
+  if (url === "/api/keys/example") return json(EXAMPLE_KEYS);
   if (url === "/api/hide") {
     hideRequests.push(init?.body as FormData);
     return Promise.resolve(
@@ -79,5 +87,25 @@ describe("HidePage", () => {
     expect(hideRequests[0]?.get("method")).toBe("password");
     expect(hideRequests[0]?.get("algorithm")).toBe("matching");
     expect(hideRequests[0]?.has("recipient_public_key")).toBe(false);
+  });
+
+  it("fills in the example key, warns that anyone can read the message, and says so on the result", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.upload(screen.getByLabelText(/Drop an image/), new File(["png"], "holiday.png", { type: "image/png" }));
+    await screen.findByText("Holds up to 1.5 KB");
+    await user.type(screen.getByLabelText("Secret message"), "just testing");
+    await user.click(screen.getByRole("radio", { name: /Recipient's public key/ }));
+    await user.click(screen.getByRole("button", { name: "Use the example key (testing only)" }));
+
+    expect(await screen.findByText("This is the example key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Recipient's public key")).toHaveValue(EXAMPLE_KEYS.public_key_base64);
+    await user.click(screen.getByRole("button", { name: "Hide message" }));
+
+    expect(await screen.findByText("Hidden with the example key")).toBeInTheDocument();
+    await waitFor(() => expect(hideRequests).toHaveLength(1));
+    expect(hideRequests[0]?.get("method")).toBe("public_key");
+    expect(hideRequests[0]?.get("recipient_public_key")).toBe(EXAMPLE_KEYS.public_key_base64);
   });
 });

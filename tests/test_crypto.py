@@ -7,8 +7,11 @@
 - Key import/export formats.
 """
 
+import hashlib
+
 import pytest
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
 
 from core import crypto
 from core.crypto import (
@@ -29,12 +32,15 @@ from core.crypto import (
     packet_overhead,
 )
 from core.keys import (
+    EXAMPLE_KEY_SEED_LABEL,
+    example_keypair,
     export_private_key_pem,
     export_public_key_base64,
     export_public_key_pem,
     generate_keypair,
     import_private_key_pem,
     import_public_key_auto,
+    is_example_public_key,
 )
 
 # ==============================================================================
@@ -168,6 +174,25 @@ def test_locator_keys_are_deterministic_and_distinct():
 # ==============================================================================
 # Key Management & Serialization Tests
 # ==============================================================================
+
+
+def test_example_keypair_is_fixed_and_derived_from_its_public_label():
+    first_private, first_public = example_keypair()
+    second_private, _ = example_keypair()
+    seed = hashlib.sha256(EXAMPLE_KEY_SEED_LABEL).digest()
+
+    assert export_private_key_pem(first_private) == export_private_key_pem(second_private)
+    assert export_public_key_base64(first_public) == export_public_key_base64(
+        x25519.X25519PrivateKey.from_private_bytes(seed).public_key()
+    )
+
+
+def test_only_the_example_public_key_is_recognised_as_the_example():
+    _, example_public = example_keypair()
+    _, other_public = generate_keypair()
+
+    assert is_example_public_key(example_public)
+    assert not is_example_public_key(other_public)
 
 
 def test_keypair_generation_and_export():
