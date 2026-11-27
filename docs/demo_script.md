@@ -79,17 +79,27 @@ Show the **Overview** page briefly.
 **Expected:** 98–100 %, *Hidden data likely*. The top features are `spa_rate_*`.
 **Say:** "Same message, same photo, different embedding algorithm. Replacement is caught every time: Sample Pairs Analysis sees the pairs of pixel values it creates. Matching nudges values up or down instead, so at this size it slips under the threshold. It isn't invisible, though: our detector also compares the noise between colour channels, and catches most large matching payloads. That's why matching is the default *and* why the pre-flight check keeps messages small."
 
-### 7. Evaluation Lab (7:15 → 9:15)
+### 7. Evaluation Lab (7:15 → 9:30)
 
-**Do:** **Lab** tab → point at the saved results (top card) → drop `cover.png` into *Run the experiments on your image* → **Run all demos** (~3–5 s):
-- **Attacks:** the control is *Recovered*. Wrong password, wrong private key, bit flips, crop and signature scan all *Failed safely*.
-- **Robustness:** PNG re-save *Recovered*. JPEG q90/q75 and resize *Failed safely*.
-- **Detector comparison** (~5 s): clean ≈23 %; replacement flagged from 10 % (≈98 %); matching passes at 5–10 % (≈28–45 %) and is flagged from 25 % (≈96 %).
-- **Quality:** PSNR 64 → 54 dB from 5 % to 50 %.
+**Do:** **Lab** tab. The page has four parts, top to bottom.
 
-**Say:** "These are the same experiment scripts that produced the report's numbers, running live on this photo."
+1. **Live sample run** (top card, ~10 s). Leave the slider at **10 %** → **Run on 8 photos**. The cards fill in two at a time.
+   **Expected:** replacement flagged on 7 of 8 photos (the peacock's texture hides it), matching on 0 of 8. Pre-flight and detector agree within a few points. PSNR is 61 dB. Matching on the *blurred leaves* sits just under the line (≈71 %), so it can flip to flagged on a given run. If it does, say so: smooth photos are the risky ones. Point at one card's changed-values map: "every dot is one colour value we changed."
+   **Say:** "Eight photos the detector never trained on, hidden into live. The same payload is caught with replacement and slips through with matching."
+2. **Saved results** (second card). Point at it for a moment: "these are the full held-out numbers from the report."
+3. **Your own image.** Drop `cover.png` into *Run the experiments on your image* → **Run all demos** (~3–5 s):
+   - **Attacks:** the control is *Recovered*. Wrong password, wrong private key, bit flips, crop and signature scan all *Failed safely*.
+   - **Robustness:** PNG re-save *Recovered*. JPEG q90/q75 and resize *Failed safely*.
+   - **Detector comparison** (~5 s): clean ≈23 %; replacement flagged from 10 % (≈98 %); matching passes at 5–10 % (≈28–45 %) and is flagged from 25 % (≈96 %).
+   - **Quality:** PSNR 64 → 54 dB from 5 % to 50 %.
+4. **Your image × sample messages** (bottom card, same image, ~7 s) → **Run 6 messages in your image**.
+   **Expected:** the note, chat, email and letter pass with both algorithms (matching ≈23–28 %). The field report (12.6 KB) is flagged with replacement only (matching ≈45 %). The 40 KB dossier is flagged with both. The summary reads **60 of 60** safety checks as expected.
+   Scroll to the **Long dossier** card. Point at the cyan changed pixels, the red flattest third, the yellow box, and the before/after zoom. Read the first line of *Why*.
+   **Say:** "Here are our real messages in your photo. Cyan is every pixel we touched, and the yellow box is where a flat area took the most changes. Small messages blend in. The dossier fills 41 % of the image and is caught. The detector judges the whole image; the map shows where the evidence sits."
 
-### 8. Close (9:15 → 10:00)
+**Say:** "These are the same experiment scripts that produced the report's numbers, running live."
+
+### 8. Close (9:30 → 10:00)
 **Say:** "Three findings. The pre-flight check is a reliable guide. The embedding algorithm and the message size matter far more than the photo. And every attack we tried fails safely. Limits: LSB doesn't survive JPEG, and large payloads are detectable, even with matching. Content-adaptive embedding and JPEG-domain hiding are our future work."
 
 ---
@@ -103,6 +113,7 @@ Show the **Overview** page briefly.
 | Upload rejected as too large | Use `cover.png` (512×512). Lab demos accept up to 1024×1024. |
 | Reveal says "no message found" | Check the mode (*My private key* vs *Password*) and that the *downloaded* PNG was used, not `cover.png`. |
 | Detector comparison is slow | It takes ~5 s; keep talking. The pre-flight and detector results above make the same point. |
+| A live run (8 photos or 6 messages) is slow | Press **Stop** once half the cards are done. The finished cards and the summary already make the point. |
 | Laptop fails entirely | Play `fallback.mov` from a USB stick or a phone, and narrate over it. |
 
 ## Likely questions

@@ -281,7 +281,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 **Deliverables:** `api/`, `frontend/`, `tests/test_api.py`, `frontend/src/**/*.test.ts(x)`, `Dockerfile`, `Makefile`
 
 **Exit criteria:**
-- [ ] Manual walkthrough passes: keys → pre-flight → hide → download → reveal → detect → Evaluation Lab.
+- [x] Manual walkthrough passes: keys → pre-flight → hide → download → reveal → detect → Evaluation Lab. *27 Nov: clicked through the UI in a real (headless) Chrome against the live server, using real downloads and uploads: 24/24 checks, including wrong password, three kinds of tampering, JPEG rejection, all four Lab parts and 390 px layouts, with no console errors. A human pass during rehearsal is still worthwhile.*
 - [x] Wrong password and tampered image show a clear message, not a stack trace.
 - [x] Risk level is never conveyed by colour alone (label + icon + percentage).
 - [x] `pytest`, `ruff`, `npm test`, `npm run lint` (incl. jsx-a11y) and `npm run typecheck` all pass.

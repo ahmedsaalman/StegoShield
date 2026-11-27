@@ -87,6 +87,17 @@ The first model reached only ROC-AUC 0.75 on the sanity slice (50 % sequential r
 
 That model still could not see LSB matching (AUC 0.51–0.57), because matching leaves no pairs-of-values signature. Camera noise in demosaiced photos is strongly correlated across R, G and B, while ±1 embedding changes each channel independently. The inter-channel features capture exactly that, and with 800 more source photos they lifted matching at 50 % to AUC 0.963. At the default 0.5 threshold the improved model flagged 15 % of clean photos; the tuned 0.72 threshold cuts that to 4.1 % at unchanged AUC.
 
+### 3.5 Evaluation Lab
+
+The web app's Lab page lets anyone check the claims live, using the same `experiments/` code as §4. It has four parts:
+
+- **Live sample run.** Eight built-in 512×512 photos from the held-out split, hidden into at a payload share the user chooses. For each photo and algorithm it shows the pre-flight prediction next to the detector's real score, the quality, and a full-resolution map of the changed colour values.
+- **Saved results.** The held-out numbers from §4.
+- **Your own image.** The quality, robustness, attack and detector experiments, run on one uploaded image.
+- **Your image × sample messages.** Six built-in texts, from a 75-byte note to a 40 KB dossier, each hidden in the uploaded image with both algorithms. Each run gets the detector score, quality and five safety checks (right key, wrong key, bit flips, JPEG re-save, resize). An exposure map highlights every changed pixel over the image's flattest third, boxes the flat area that took the most changes, and explains the result with the detector's strongest signals.
+
+The detector scores the whole image, so the exposure map shows where the evidence sits rather than giving a per-region verdict. Because embedding scatters bits uniformly, flat areas receive changes in proportion to their size. That is the gap adaptive embedding would close (§6).
+
 ## 4. Evaluation
 
 Every experiment uses only the 417 held-out covers (the 180 test photos). Each script re-checks its covers against a saved split file before running. Full tables, figures and reproduction commands are in [results.md](results.md).
