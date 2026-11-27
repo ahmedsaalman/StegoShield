@@ -74,6 +74,7 @@ describe("HidePage", () => {
 
     expect(await screen.findByRole("heading", { name: "Your message is hidden" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download holiday.png" })).toBeInTheDocument();
+    expect(screen.getByText(/the same name as your photo, so the name gives nothing away/)).toBeInTheDocument();
     await waitFor(() => expect(hideRequests).toHaveLength(1));
     expect(hideRequests[0]?.get("method")).toBe("password");
     expect(hideRequests[0]?.get("algorithm")).toBe("matching");

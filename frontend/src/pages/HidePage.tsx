@@ -519,6 +519,11 @@ function HideResult({ cover, result, usedPassword, onStartOver }: HideResultProp
                 <figcaption>With hidden message</figcaption>
               </figure>
             </div>
+            <p className="text-muted">
+              It downloads as <strong>{result.filename}</strong>, the same name as your photo, so the name gives
+              nothing away. If the original is in the same folder, your browser may save it as &ldquo;(1)&rdquo;:
+              send the file you just downloaded, not the original.
+            </p>
           </Card>
           <Card title="Before you send it">
             <ul className="check-list">
