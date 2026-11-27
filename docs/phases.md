@@ -301,7 +301,7 @@ Phases 1 and 2 are independent and can run in parallel if two people are availab
 - [x] Final report built from `revised_proposal.md` + `results.md` (problem, design, results, limitations, future work). *`docs/final_report.md`.*
 - [x] Demo script: key generation → pre-flight check → hide → extract → detect → Evaluation Lab, with a fallback recording in case of laptop/network issues. *`docs/demo_script.md`; the expected results were dry-run through the API on cover `0854_0`. The fallback recording itself is made during rehearsal.*
 - [ ] Rehearse at least twice, timed.
-- [ ] Tag the release: `git tag v1.0`.
+- [x] Tag the release: `git tag v1.0`. *Tagged 27 Nov 2026, before the Docker check and rehearsals; if those need a fix, move the tag to the fixed commit.*
 
 **Deliverables:** `docs/final_report.pdf` (or `.md`), `docs/demo_script.md`, tag `v1.0`
 
