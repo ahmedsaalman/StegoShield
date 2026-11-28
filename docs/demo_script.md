@@ -35,7 +35,7 @@ Every "Expected" line below comes from a dry run on the demo cover (`0854_0`, a 
 
 ## 15 minutes before
 
-- [ ] `make serve` is running. `http://127.0.0.1:8000/api/health` returns `{"status":"ok"}`.
+- [ ] `make serve` is running. `http://127.0.0.1:8000/api/health` returns `{"status":"ok"}`, and the app's footer says **Detector ready** (not *Detector unavailable* or *Server unreachable*).
 - [ ] Browser at 125 % zoom, light theme, one tab, notifications off (Do Not Disturb).
 - [ ] Finder window open on `~/Desktop/stegoshield-demo`, for drag-and-drop.
 - [ ] Downloads folder empty, so the stego file is easy to find.
@@ -59,7 +59,7 @@ Show the **Overview** page briefly.
 **Do:** **Pre-flight** → drop `cover.png` → protection *Recipient's public key* → size **9000** bytes → **Run pre-flight check**.
 **Expected:** **Medium** risk (≈45 %), suggested maximum ≈4,850 bytes.
 **Do:** change the size to **4000** → **Run pre-flight check** again.
-**Expected:** **Low** risk (≈28 %).
+**Expected:** as soon as you edit the size, the old result says *The form has changed since this check*; that's intended. After the rerun: **Low** risk (≈28 %). The page scrolls down to the result by itself.
 **Say:** "This isn't a rule of thumb. The server hid that much random data in a copy of this photo, the way the real message will be hidden, and asked our trained detector to score it. 9 KB was borderline, so it told us to stay under about 4.8 KB. Across 417 held-out test images, nothing rated Low was ever detected."
 
 ### 4. Hide (3:15 → 4:45)
@@ -108,7 +108,7 @@ Show the **Overview** page briefly.
 
 | Problem | Recovery (≤ 20 s) |
 |---|---|
-| Page won't load | Terminal: `make serve` again. If it fails a second time, switch to `fallback.mov` at the current step. |
+| Page won't load, or the footer says *Server unreachable* | Terminal: `make serve` again, then reload the page. If it fails a second time, switch to `fallback.mov` at the current step. |
 | "Detector not available" | `models/detector.joblib` is missing or mismatched. Don't debug live; switch to the fallback video. |
 | Upload rejected as too large | Use `cover.png` (512×512). Lab demos accept up to 1024×1024. |
 | Reveal says "no message found" | Check the mode (*My private key* vs *Password*) and that the *downloaded* PNG was used, not `cover.png`. |
