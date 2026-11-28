@@ -59,6 +59,12 @@ export function RevealPage() {
     setImage(problem ? null : file);
   }
 
+  // A revealed message (or an error) belongs to the image it came from, so it goes when the image does.
+  function removeImage() {
+    reveal.reset();
+    setImage(null);
+  }
+
   const exampleKey = useRequest<ExampleKeyPair>();
 
   function fillExamplePrivateKey() {
@@ -118,7 +124,7 @@ export function RevealPage() {
                 <ImagePreview
                   file={image}
                   alt="The file you received"
-                  onRemove={() => setImage(null)}
+                  onRemove={removeImage}
                   activity={reveal.state.status === "loading" ? "scanning" : null}
                 />
               ) : (

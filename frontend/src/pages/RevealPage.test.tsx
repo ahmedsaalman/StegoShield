@@ -85,4 +85,18 @@ describe("RevealPage", () => {
     expect(await screen.findByText("Something went wrong.")).toBeInTheDocument();
     expect(screen.queryByText("Example private key (testing only)")).not.toBeInTheDocument();
   });
+
+  it("clears the revealed message when the image is removed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.upload(screen.getByLabelText(/Drop the image here/), new File(["png"], "holiday.png", { type: "image/png" }));
+    await user.type(screen.getByLabelText("Password"), "correct horse");
+    await user.click(screen.getByRole("button", { name: "Reveal message" }));
+    expect(await screen.findByRole("region", { name: "Decrypted message" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Choose another image" }));
+
+    expect(screen.queryByRole("region", { name: "Decrypted message" })).not.toBeInTheDocument();
+  });
 });
