@@ -284,6 +284,11 @@ pre,
   backdrop-filter: saturate(180%) blur(8px);
 }
 
+/* Keeps scrolled-to results clear of the sticky header (bar + tab row). */
+.scroll-target {
+  scroll-margin-top: calc(60px + var(--tap-target) + var(--space-4));
+}
+
 .site-header__bar {
   display: flex;
   align-items: center;
@@ -451,6 +456,10 @@ pre,
 
 .status-dot--warning::before {
   background: var(--warning-fg);
+}
+
+.status-dot--danger::before {
+  background: var(--danger-fg);
 }
 
 .theme-switcher {
@@ -1114,6 +1123,19 @@ pre,
 .field__hint {
   color: var(--fg-muted);
   font-size: var(--text-xs);
+}
+
+.caps-lock-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning-fg);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.caps-lock-note:empty {
+  display: none;
 }
 
 .field__error {

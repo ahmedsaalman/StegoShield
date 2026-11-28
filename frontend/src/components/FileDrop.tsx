@@ -4,6 +4,8 @@ import { formatBytes } from "../lib/format";
 import { Icon, type IconName } from "./Icon";
 
 interface FileDropProps {
+  /** Id of the file input, so a form can move focus to it when it is missing. */
+  id?: string;
   label: string;
   hint: string;
   accept: string;
@@ -16,8 +18,9 @@ interface FileDropProps {
  * A real <input type="file"> (so keyboard and screen readers work normally) with a larger,
  * drag-and-drop-friendly label around it.
  */
-export function FileDrop({ label, hint, accept, icon = "upload", onFile, error }: FileDropProps) {
-  const inputId = useId();
+export function FileDrop({ id, label, hint, accept, icon = "upload", onFile, error }: FileDropProps) {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +38,13 @@ export function FileDrop({ label, hint, accept, icon = "upload", onFile, error }
     setIsDragging(true);
   }
 
+  // Moving over the label's own text fires dragleave on the zone too; only a real exit should unhighlight it.
+  function handleDragLeave(event: DragEvent<HTMLElement>) {
+    const enteredElement = event.relatedTarget;
+    if (enteredElement instanceof Node && event.currentTarget.contains(enteredElement)) return;
+    setIsDragging(false);
+  }
+
   const classes = ["file-drop", isDragging && "file-drop--active", error && "file-drop--invalid"]
     .filter(Boolean)
     .join(" ");
@@ -43,7 +53,7 @@ export function FileDrop({ label, hint, accept, icon = "upload", onFile, error }
     <div className="field">
       {/* Drag-and-drop is a pointer-only shortcut; the file input inside is the accessible control. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div className={classes} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={() => setIsDragging(false)}>
+      <div className={classes} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
         <input
           ref={inputRef}
           id={inputId}

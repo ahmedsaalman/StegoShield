@@ -12,9 +12,10 @@ import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
 import { PageBody, PageHeader } from "../components/PageHeader";
+import { ScrollIntoView } from "../components/ScrollIntoView";
 import { StatusBadge } from "../components/StatusBadge";
 import { api, type KeyMethod, type Preflight } from "../lib/api";
-import { formatBytes, formatDimensions, formatPercent, formatProbability } from "../lib/format";
+import { formatBytes, formatDimensions, formatPercent, formatProbability, parsePositiveInteger } from "../lib/format";
 import { useCountUp } from "../lib/motion";
 import { RISK_PRESENTATION } from "../lib/presentation";
 import { COVER_ACCEPT, useCoverImage } from "../lib/useCoverImage";
@@ -23,13 +24,18 @@ import { useAppState } from "../state/AppState";
 import { METHOD_CHOICES } from "./options";
 
 const DEFAULT_MESSAGE_BYTES = 500;
+const SIZE_FIELD_ID = "preflight-bytes";
 
 export function PreflightPage() {
   const cover = useCoverImage();
   const { setHandoffCover } = useAppState();
   const navigate = useNavigate();
   const [method, setMethod] = useState<KeyMethod>("password");
-  const [messageBytes, setMessageBytes] = useState(DEFAULT_MESSAGE_BYTES);
+  // Kept as typed, so the field can be cleared and retyped without snapping back to a number.
+  const [sizeText, setSizeText] = useState(String(DEFAULT_MESSAGE_BYTES));
+  const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
+  const messageBytes = parsePositiveInteger(sizeText);
+  const sizeError = hasTriedSubmit && messageBytes === null ? "Enter a whole number of bytes, 1 or more." : null;
   const check = useRequest<Preflight>();
 
   const capacity = cover.capacity.status === "success" ? cover.capacity.data : null;
@@ -37,6 +43,11 @@ export function PreflightPage() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    setHasTriedSubmit(true);
+    if (messageBytes === null) {
+      document.getElementById(SIZE_FIELD_ID)?.focus();
+      return;
+    }
     if (!cover.file) return;
     const file = cover.file;
     void check.run((signal) => api.preflight(file, messageBytes, method, signal));
@@ -109,22 +120,24 @@ export function PreflightPage() {
                 onChange={setMethod}
               />
               <Field
-                id="preflight-bytes"
+                id={SIZE_FIELD_ID}
                 label="Message size in bytes"
+                error={sizeError}
                 hint="One English letter is one byte; emoji and accented letters take 2–4. A short paragraph is about 500 bytes."
               >
                 {(describedBy) => (
                   <div className="size-input">
                     <input
-                      id="preflight-bytes"
+                      id={SIZE_FIELD_ID}
                       className="input size-input__number"
                       type="number"
                       inputMode="numeric"
                       min={1}
                       max={maxBytes ?? undefined}
-                      value={messageBytes}
-                      onChange={(event) => setMessageBytes(Math.max(1, Number(event.target.value) || 1))}
+                      value={sizeText}
+                      onChange={(event) => setSizeText(event.target.value)}
                       aria-describedby={describedBy}
+                      aria-invalid={sizeError ? true : undefined}
                     />
                     {maxBytes !== null && maxBytes > 1 && (
                       <input
@@ -132,10 +145,10 @@ export function PreflightPage() {
                         type="range"
                         min={1}
                         max={maxBytes}
-                        value={Math.min(messageBytes, maxBytes)}
-                        onChange={(event) => setMessageBytes(Number(event.target.value))}
+                        value={Math.min(messageBytes ?? 1, maxBytes)}
+                        onChange={(event) => setSizeText(event.target.value)}
                         aria-label="Message size slider"
-                        aria-valuetext={formatBytes(messageBytes)}
+                        aria-valuetext={formatBytes(messageBytes ?? 1)}
                       />
                     )}
                   </div>
@@ -160,7 +173,15 @@ export function PreflightPage() {
           </form>
 
           {check.state.status === "error" && <ErrorAlert error={check.state.error} />}
-          {check.state.status === "success" && <PreflightReport result={check.state.data} onHide={hideInThisImage} />}
+          {check.state.status === "success" && (
+            <ScrollIntoView>
+              <PreflightReport
+                result={check.state.data}
+                isStale={check.state.data.message_bytes !== messageBytes || check.state.data.method !== method}
+                onHide={hideInThisImage}
+              />
+            </ScrollIntoView>
+          )}
         </div>
       </PageBody>
     </>
@@ -179,7 +200,14 @@ function AnimatedPercent({ probability }: { probability: number }) {
   );
 }
 
-function PreflightReport({ result, onHide }: { result: Preflight; onHide: () => void }) {
+interface PreflightReportProps {
+  result: Preflight;
+  /** The size or protection on the form no longer matches what this result was computed for. */
+  isStale: boolean;
+  onHide: () => void;
+}
+
+function PreflightReport({ result, isStale, onHide }: PreflightReportProps) {
   const risk = RISK_PRESENTATION[result.risk.level];
   const methodCapacity = result.capacity.max_message_bytes[result.method];
   return (
@@ -197,6 +225,13 @@ function PreflightReport({ result, onHide }: { result: Preflight; onHide: () => 
         </>
       }
     >
+      {isStale && (
+        <Alert tone="info" title="The form has changed since this check">
+          This result is still for {formatBytes(result.message_bytes)} with{" "}
+          {result.method === "password" ? "a password" : "a public key"}. Run the check again to update it.
+        </Alert>
+      )}
+
       <div className="verdict">
         <AnimatedPercent probability={result.risk.probability} />
         <StatusBadge status={risk} size="lg" />

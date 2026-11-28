@@ -505,6 +505,13 @@ interface HideResultProps {
 }
 
 function HideResult({ cover, result, usedPassword, usedExampleKey, onStartOver }: HideResultProps) {
+  const [hasDownloaded, setHasDownloaded] = useState(false);
+
+  function download() {
+    saveFile(result.blob, result.filename);
+    setHasDownloaded(true);
+  }
+
   const tips = usedPassword
     ? [...SENDING_TIPS, "Share the password through a different channel than the image."]
     : SENDING_TIPS;
@@ -541,10 +548,13 @@ function HideResult({ cover, result, usedPassword, usedExampleKey, onStartOver }
                   <Button variant="ghost" size="sm" onClick={onStartOver}>
                     Hide another
                   </Button>
-                  <Button variant="primary" size="sm" icon="download" onClick={() => saveFile(result.blob, result.filename)}>
-                    Download {result.filename}
+                  <Button variant="primary" size="sm" icon={hasDownloaded ? "check" : "download"} onClick={download}>
+                    {hasDownloaded ? "Download again" : `Download ${result.filename}`}
                   </Button>
                 </div>
+                <span className="visually-hidden" role="status">
+                  {hasDownloaded ? `Download started: ${result.filename}` : ""}
+                </span>
               </>
             }
           >

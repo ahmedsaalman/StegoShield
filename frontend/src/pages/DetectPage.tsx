@@ -9,6 +9,7 @@ import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
 import { PageBody, PageHeader } from "../components/PageHeader";
+import { ScrollIntoView } from "../components/ScrollIntoView";
 import { StatusBadge } from "../components/StatusBadge";
 import { api, type Detection, type FeatureContribution } from "../lib/api";
 import { describeFeature } from "../lib/features";
@@ -97,7 +98,11 @@ export function DetectPage() {
           </form>
 
           {scan.state.status === "error" && <ErrorAlert error={scan.state.error} />}
-          {scan.state.status === "success" && <DetectionReport result={scan.state.data} />}
+          {scan.state.status === "success" && (
+            <ScrollIntoView>
+              <DetectionReport result={scan.state.data} />
+            </ScrollIntoView>
+          )}
         </div>
       </PageBody>
     </>

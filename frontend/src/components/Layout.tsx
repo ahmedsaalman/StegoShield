@@ -3,18 +3,9 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { useAppState } from "../state/AppState";
 import { Icon } from "./Icon";
-import { type Tab, TabBar } from "./TabBar";
+import { MAIN_TABS } from "./navigation";
+import { TabBar } from "./TabBar";
 import { ThemeSwitcher } from "./ThemeToggle";
-
-const TABS: Tab[] = [
-  { to: "/", label: "Overview", end: true },
-  { to: "/preflight", label: "Pre-flight" },
-  { to: "/hide", label: "Hide" },
-  { to: "/reveal", label: "Reveal" },
-  { to: "/detect", label: "Detect" },
-  { to: "/keys", label: "Keys" },
-  { to: "/lab", label: "Lab" },
-];
 
 export function Layout() {
   useFocusHeadingOnNavigation();
@@ -50,14 +41,12 @@ function SiteHeader() {
           </a>
         </div>
       </div>
-      <TabBar tabs={TABS} />
+      <TabBar tabs={MAIN_TABS} />
     </header>
   );
 }
 
 function SiteFooter() {
-  const { meta } = useAppState();
-  const isDetectorReady = meta?.detector.available ?? false;
   return (
     <footer className="site-footer">
       <div className="container site-footer__inner">
@@ -66,15 +55,29 @@ function SiteFooter() {
           Stateless: nothing you upload is stored.
         </p>
         <div className="site-footer__end">
-          {meta && (
-            <span className={isDetectorReady ? "status-dot status-dot--success" : "status-dot status-dot--warning"}>
-              {isDetectorReady ? "Detector ready" : "Detector unavailable"}
-            </span>
-          )}
+          <ServerStatus />
           <ThemeSwitcher />
         </div>
       </div>
     </footer>
+  );
+}
+
+/** Whether the API answered at start-up and, if it did, whether its detector is installed. */
+function ServerStatus() {
+  const { meta, metaError } = useAppState();
+  if (metaError) {
+    return (
+      <span className="status-dot status-dot--danger" title={metaError.message}>
+        Server unreachable
+      </span>
+    );
+  }
+  if (!meta) return null;
+  return meta.detector.available ? (
+    <span className="status-dot status-dot--success">Detector ready</span>
+  ) : (
+    <span className="status-dot status-dot--warning">Detector unavailable</span>
   );
 }
 

@@ -85,4 +85,33 @@ describe("RevealPage", () => {
     expect(await screen.findByText("Something went wrong.")).toBeInTheDocument();
     expect(screen.queryByText("Example private key (testing only)")).not.toBeInTheDocument();
   });
+
+  it("clears the revealed message when the image is removed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.upload(screen.getByLabelText(/Drop the image here/), new File(["png"], "holiday.png", { type: "image/png" }));
+    await user.type(screen.getByLabelText("Password"), "correct horse");
+    await user.click(screen.getByRole("button", { name: "Reveal message" }));
+    expect(await screen.findByRole("region", { name: "Decrypted message" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Choose another image" }));
+
+    expect(screen.queryByRole("region", { name: "Decrypted message" })).not.toBeInTheDocument();
+  });
+
+  it("focuses the first missing field and drops each error once it is fixed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Reveal message" }));
+    expect(screen.getByLabelText(/Drop the image here/)).toHaveFocus();
+    expect(screen.getByText("Enter the password.")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Password"), "correct horse");
+
+    expect(screen.queryByText("Enter the password.")).not.toBeInTheDocument();
+    expect(screen.getByText("Choose the image you received.")).toBeInTheDocument();
+    expect(revealRequests).toHaveLength(0);
+  });
 });
