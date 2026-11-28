@@ -28,6 +28,14 @@ export function formatDimensions(width: number, height: number): string {
   return `${integerFormat.format(width)} × ${integerFormat.format(height)} px`;
 }
 
+/** A whole, positive number typed by the user, or null while the text isn't one yet (empty, "12.5", "-3"). */
+export function parsePositiveInteger(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return value >= 1 && Number.isSafeInteger(value) ? value : null;
+}
+
 export function utf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }

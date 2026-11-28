@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import { describeFeature } from "./features";
-import { formatBytes, formatPercent, formatProbability, utf8ByteLength } from "./format";
+import { formatBytes, formatPercent, formatProbability, parsePositiveInteger, utf8ByteLength } from "./format";
+
+describe("parsePositiveInteger", () => {
+  it.each([
+    ["1", 1],
+    [" 2000 ", 2000],
+  ])("reads %j as %i", (text, expected) => {
+    expect(parsePositiveInteger(text)).toBe(expected);
+  });
+
+  it.each(["", "0", "-3", "12.5", "1e3", "abc", "99999999999999999999"])("rejects %j", (text) => {
+    expect(parsePositiveInteger(text)).toBeNull();
+  });
+});
 
 describe("formatBytes", () => {
   it.each([
