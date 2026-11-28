@@ -38,6 +38,13 @@ export function FileDrop({ id, label, hint, accept, icon = "upload", onFile, err
     setIsDragging(true);
   }
 
+  // Moving over the label's own text fires dragleave on the zone too; only a real exit should unhighlight it.
+  function handleDragLeave(event: DragEvent<HTMLElement>) {
+    const enteredElement = event.relatedTarget;
+    if (enteredElement instanceof Node && event.currentTarget.contains(enteredElement)) return;
+    setIsDragging(false);
+  }
+
   const classes = ["file-drop", isDragging && "file-drop--active", error && "file-drop--invalid"]
     .filter(Boolean)
     .join(" ");
@@ -46,7 +53,7 @@ export function FileDrop({ id, label, hint, accept, icon = "upload", onFile, err
     <div className="field">
       {/* Drag-and-drop is a pointer-only shortcut; the file input inside is the accessible control. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div className={classes} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={() => setIsDragging(false)}>
+      <div className={classes} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
         <input
           ref={inputRef}
           id={inputId}
