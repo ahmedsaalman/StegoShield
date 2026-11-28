@@ -3,18 +3,9 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { useAppState } from "../state/AppState";
 import { Icon } from "./Icon";
-import { type Tab, TabBar } from "./TabBar";
+import { MAIN_TABS } from "./navigation";
+import { TabBar } from "./TabBar";
 import { ThemeSwitcher } from "./ThemeToggle";
-
-const TABS: Tab[] = [
-  { to: "/", label: "Overview", end: true },
-  { to: "/preflight", label: "Pre-flight" },
-  { to: "/hide", label: "Hide" },
-  { to: "/reveal", label: "Reveal" },
-  { to: "/detect", label: "Detect" },
-  { to: "/keys", label: "Keys" },
-  { to: "/lab", label: "Lab" },
-];
 
 export function Layout() {
   useFocusHeadingOnNavigation();
@@ -50,7 +41,7 @@ function SiteHeader() {
           </a>
         </div>
       </div>
-      <TabBar tabs={TABS} />
+      <TabBar tabs={MAIN_TABS} />
     </header>
   );
 }
