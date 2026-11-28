@@ -453,6 +453,10 @@ pre,
   background: var(--warning-fg);
 }
 
+.status-dot--danger::before {
+  background: var(--danger-fg);
+}
+
 .theme-switcher {
   display: inline-flex;
   margin: 0;

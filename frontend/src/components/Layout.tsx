@@ -56,8 +56,6 @@ function SiteHeader() {
 }
 
 function SiteFooter() {
-  const { meta } = useAppState();
-  const isDetectorReady = meta?.detector.available ?? false;
   return (
     <footer className="site-footer">
       <div className="container site-footer__inner">
@@ -66,15 +64,29 @@ function SiteFooter() {
           Stateless: nothing you upload is stored.
         </p>
         <div className="site-footer__end">
-          {meta && (
-            <span className={isDetectorReady ? "status-dot status-dot--success" : "status-dot status-dot--warning"}>
-              {isDetectorReady ? "Detector ready" : "Detector unavailable"}
-            </span>
-          )}
+          <ServerStatus />
           <ThemeSwitcher />
         </div>
       </div>
     </footer>
+  );
+}
+
+/** Whether the API answered at start-up and, if it did, whether its detector is installed. */
+function ServerStatus() {
+  const { meta, metaError } = useAppState();
+  if (metaError) {
+    return (
+      <span className="status-dot status-dot--danger" title={metaError.message}>
+        Server unreachable
+      </span>
+    );
+  }
+  if (!meta) return null;
+  return meta.detector.available ? (
+    <span className="status-dot status-dot--success">Detector ready</span>
+  ) : (
+    <span className="status-dot status-dot--warning">Detector unavailable</span>
   );
 }
 
