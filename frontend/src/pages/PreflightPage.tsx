@@ -172,7 +172,13 @@ export function PreflightPage() {
           </form>
 
           {check.state.status === "error" && <ErrorAlert error={check.state.error} />}
-          {check.state.status === "success" && <PreflightReport result={check.state.data} onHide={hideInThisImage} />}
+          {check.state.status === "success" && (
+            <PreflightReport
+              result={check.state.data}
+              isStale={check.state.data.message_bytes !== messageBytes || check.state.data.method !== method}
+              onHide={hideInThisImage}
+            />
+          )}
         </div>
       </PageBody>
     </>
@@ -191,7 +197,14 @@ function AnimatedPercent({ probability }: { probability: number }) {
   );
 }
 
-function PreflightReport({ result, onHide }: { result: Preflight; onHide: () => void }) {
+interface PreflightReportProps {
+  result: Preflight;
+  /** The size or protection on the form no longer matches what this result was computed for. */
+  isStale: boolean;
+  onHide: () => void;
+}
+
+function PreflightReport({ result, isStale, onHide }: PreflightReportProps) {
   const risk = RISK_PRESENTATION[result.risk.level];
   const methodCapacity = result.capacity.max_message_bytes[result.method];
   return (
@@ -209,6 +222,13 @@ function PreflightReport({ result, onHide }: { result: Preflight; onHide: () => 
         </>
       }
     >
+      {isStale && (
+        <Alert tone="info" title="The form has changed since this check">
+          This result is still for {formatBytes(result.message_bytes)} with{" "}
+          {result.method === "password" ? "a password" : "a public key"}. Run the check again to update it.
+        </Alert>
+      )}
+
       <div className="verdict">
         <AnimatedPercent probability={result.risk.probability} />
         <StatusBadge status={risk} size="lg" />
