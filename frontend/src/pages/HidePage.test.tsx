@@ -87,6 +87,10 @@ describe("HidePage", () => {
     expect(hideRequests[0]?.get("method")).toBe("password");
     expect(hideRequests[0]?.get("algorithm")).toBe("matching");
     expect(hideRequests[0]?.has("recipient_public_key")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Download holiday.png" }));
+    expect(screen.getByRole("button", { name: "Download again" })).toBeInTheDocument();
+    expect(screen.getByText("Download started: holiday.png")).toBeInTheDocument();
   });
 
   it("fills in the example key, warns that anyone can read the message, and says so on the result", async () => {
