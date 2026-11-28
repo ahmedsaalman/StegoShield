@@ -1116,6 +1116,19 @@ pre,
   font-size: var(--text-xs);
 }
 
+.caps-lock-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning-fg);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.caps-lock-note:empty {
+  display: none;
+}
+
 .field__error {
   display: flex;
   gap: 6px;
