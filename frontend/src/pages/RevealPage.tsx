@@ -37,7 +37,13 @@ const UNLOCK_CHOICES = [
   { value: "public_key" as const, label: "My private key", description: "The sender used your public key." },
 ];
 
-type FieldErrors = Partial<Record<"image" | "password" | "privateKey", string>>;
+type FieldErrors = Partial<Record<keyof typeof FIELD_IDS, string>>;
+
+const FIELD_IDS = {
+  image: "reveal-image",
+  password: "reveal-password",
+  privateKey: "reveal-private-key",
+} as const;
 
 export function RevealPage() {
   const { meta } = useAppState();
@@ -49,8 +55,11 @@ export function RevealPage() {
   const [privateKeyError, setPrivateKeyError] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState("");
   const [layout, setLayout] = useState<EmbeddingLayout>("pseudorandom");
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
   const reveal = useRequest<RevealResult>();
+  // Checked on every render once the user has tried to submit, so each message goes away as soon as it is fixed.
+  const errors = validate();
+  const fieldErrors: FieldErrors = hasTriedSubmit ? errors : {};
 
   function chooseImage(file: File) {
     reveal.reset();
@@ -87,9 +96,12 @@ export function RevealPage() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const errors = validate();
-    setFieldErrors(errors);
-    if (Object.keys(errors).length > 0 || !image) return;
+    setHasTriedSubmit(true);
+    const invalidField = (Object.keys(FIELD_IDS) as (keyof FieldErrors)[]).find((field) => errors[field]);
+    if (invalidField || !image) {
+      if (invalidField) document.getElementById(FIELD_IDS[invalidField])?.focus();
+      return;
+    }
     const unlock: UnlockSecret =
       method === "password" ? { method, password } : { method, privateKey: privateKey?.pem ?? "", passphrase };
     const stegoImage = image;
@@ -129,6 +141,7 @@ export function RevealPage() {
                 />
               ) : (
                 <FileDrop
+                  id={FIELD_IDS.image}
                   label="Drop the image here or click to browse"
                   hint="PNG or BMP"
                   accept="image/png,image/bmp"
@@ -149,10 +162,10 @@ export function RevealPage() {
                 isLegendVisible={false}
               />
               {method === "password" ? (
-                <Field id="reveal-password" label="Password" error={fieldErrors.password ?? null}>
+                <Field id={FIELD_IDS.password} label="Password" error={fieldErrors.password ?? null}>
                   {(describedBy) => (
                     <PasswordInput
-                      id="reveal-password"
+                      id={FIELD_IDS.password}
                       value={password}
                       onChange={setPassword}
                       describedBy={describedBy}
@@ -246,6 +259,7 @@ function PrivateKeyFields({
         </div>
       ) : (
         <FileDrop
+          id={FIELD_IDS.privateKey}
           label="Drop your private key here or click to browse"
           hint=".pem file. Read in your browser and sent only with this request; never stored."
           accept=".pem,.key,.txt,application/x-pem-file"

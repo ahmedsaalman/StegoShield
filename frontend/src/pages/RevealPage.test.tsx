@@ -99,4 +99,19 @@ describe("RevealPage", () => {
 
     expect(screen.queryByRole("region", { name: "Decrypted message" })).not.toBeInTheDocument();
   });
+
+  it("focuses the first missing field and drops each error once it is fixed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Reveal message" }));
+    expect(screen.getByLabelText(/Drop the image here/)).toHaveFocus();
+    expect(screen.getByText("Enter the password.")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Password"), "correct horse");
+
+    expect(screen.queryByText("Enter the password.")).not.toBeInTheDocument();
+    expect(screen.getByText("Choose the image you received.")).toBeInTheDocument();
+    expect(revealRequests).toHaveLength(0);
+  });
 });
