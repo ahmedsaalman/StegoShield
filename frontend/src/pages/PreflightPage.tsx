@@ -12,6 +12,7 @@ import { ToolArt } from "../components/illustrations/ToolArt";
 import { ImagePreview } from "../components/ImagePreview";
 import { Meter } from "../components/Meter";
 import { PageBody, PageHeader } from "../components/PageHeader";
+import { ScrollIntoView } from "../components/ScrollIntoView";
 import { StatusBadge } from "../components/StatusBadge";
 import { api, type KeyMethod, type Preflight } from "../lib/api";
 import { formatBytes, formatDimensions, formatPercent, formatProbability, parsePositiveInteger } from "../lib/format";
@@ -173,11 +174,13 @@ export function PreflightPage() {
 
           {check.state.status === "error" && <ErrorAlert error={check.state.error} />}
           {check.state.status === "success" && (
-            <PreflightReport
-              result={check.state.data}
-              isStale={check.state.data.message_bytes !== messageBytes || check.state.data.method !== method}
-              onHide={hideInThisImage}
-            />
+            <ScrollIntoView>
+              <PreflightReport
+                result={check.state.data}
+                isStale={check.state.data.message_bytes !== messageBytes || check.state.data.method !== method}
+                onHide={hideInThisImage}
+              />
+            </ScrollIntoView>
           )}
         </div>
       </PageBody>

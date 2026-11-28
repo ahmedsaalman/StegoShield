@@ -284,6 +284,11 @@ pre,
   backdrop-filter: saturate(180%) blur(8px);
 }
 
+/* Keeps scrolled-to results clear of the sticky header (bar + tab row). */
+.scroll-target {
+  scroll-margin-top: calc(60px + var(--tap-target) + var(--space-4));
+}
+
 .site-header__bar {
   display: flex;
   align-items: center;

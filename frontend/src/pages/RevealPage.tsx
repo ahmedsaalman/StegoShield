@@ -13,6 +13,7 @@ import { ImagePreview } from "../components/ImagePreview";
 import { PageBody, PageHeader } from "../components/PageHeader";
 import { PasswordInput } from "../components/PasswordInput";
 import { ScrambleText } from "../components/ScrambleText";
+import { ScrollIntoView } from "../components/ScrollIntoView";
 import {
   api,
   type EmbeddingLayout,
@@ -218,7 +219,11 @@ export function RevealPage() {
             </div>
           </form>
 
-          {reveal.state.status === "success" && <RevealedMessage result={reveal.state.data} onClear={reveal.reset} />}
+          {reveal.state.status === "success" && (
+            <ScrollIntoView>
+              <RevealedMessage result={reveal.state.data} onClear={reveal.reset} />
+            </ScrollIntoView>
+          )}
         </div>
       </PageBody>
     </>
